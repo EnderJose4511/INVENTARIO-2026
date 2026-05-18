@@ -165,18 +165,7 @@ class ERPRepuestosApp:
         cobro_frame = tk.Frame(top_bar, bg="#2c3e50")
         cobro_frame.pack(side="left", padx=20)
 
-                # Contenedor de Identificación de Clientes
-        client_pos_frame = tk.Frame(top_bar, bg="#34495e", padx=10, pady=5, highlightthickness=1, highlightbackground="#455a64")
-        client_pos_frame.pack(side="left", padx=15, pady=5)
-
-        tk.Label(client_pos_frame, text="CEDULA:", font=("Segoe UI", 9, "bold"), fg="#f1c40f", bg="#34495e").pack(side="left")
-        self.ent_cedula_pos = tk.Entry(client_pos_frame, font=("Segoe UI", 10, "bold"), width=12, justify="center")
-        self.ent_cedula_pos.pack(side="left", padx=5)
-        
-        self.lbl_info_cliente_pos = tk.Label(client_pos_frame, text="Cliente", font=("Segoe UI", 9, "italic"), fg="#bdc3c7", bg="#34495e")
-        self.lbl_info_cliente_pos.pack(side="left", padx=5)
-
-        self.ent_cedula_pos.bind("<Return>", lambda e: self.verificar_o_registrar_cliente_pos())
+                
 
 
         tk.Label(cobro_frame, text="Tasa Cobro:", font=("Segoe UI", 9, "bold"), fg="#f39c12", bg="#2c3e50").pack(side="left")
@@ -255,59 +244,145 @@ class ERPRepuestosApp:
         # Empaquetado del sistema de scroll izquierdo
         canvas_pos.pack(side="left", fill="both", expand=True)
         scroll_pos.pack(side="right", fill="y")
+        
 
         self.canvas_window = canvas_pos.create_window((0, 0), window=self.grid_productos, anchor="nw")
         
         # Panel Derecho: Carrito y Total
+        
+        # Estructuramos el panel principal usando la matriz del Grid para un control absoluto
+               # =====================================================================
+        # PANEL DERECHO: DETALLE DE VENTA, TOTALES Y ACCIONES (GRID INTEGRADO)
+        # =====================================================================
         panel_der = tk.Frame(cuerpo, bg="#2c3e50", width=350)
         panel_der.pack(side="right", fill="both")
+        panel_der.pack_propagate(False)
 
-        tk.Label(panel_der, text="DETALLE DE VENTA", font=("Segoe UI", 12, "bold"), bg="#ecf0f1").pack(pady=10)
+        # Configuramos las filas del panel para distribuir el espacio magnéticamente
+        panel_der.rowconfigure(0, weight=0) # Cabecera
+        panel_der.rowconfigure(1, weight=0) # Contenedor Tabla
+        panel_der.rowconfigure(2, weight=0) # Tarjeta de Totales
+        panel_der.rowconfigure(3, weight=1) # CÉDULA AL MEDIO (Absorbe el vacío perfectamente)
+        panel_der.rowconfigure(4, weight=0) # Botonera de Acciones
 
+        # 1. Cabecera superior
+        tk.Label(panel_der, text="DETALLE DE VENTA", font=("Segoe UI", 16, "bold"), fg="#ffffff", bg="#2c3e50").grid(row=0, column=0, pady=(15, 5), sticky="ew")
 
+        # 2. Contenedor de la Tabla (Fijo sin deformaciones)
         tabla_pos_frame = tk.Frame(panel_der, bg="#2c3e50")
-        tabla_pos_frame.pack(fill="both", expand=True, padx=10, pady=5)
+        tabla_pos_frame.grid(row=1, column=0, padx=15, pady=5, sticky="nsew")
 
-
-    
-
-        # Definición de columnas (Asegúrate de que coincidan con tu imagen)
         cols_pos = ("cant", "desc", "mar", "mod", "subt")
         self.tree_pos = ttk.Treeview(tabla_pos_frame, columns=cols_pos, show="headings", height=12)
         self.tree_pos.bind("<Double-1>", self.modificar_cantidad_carrito)
-        # Scrollbar Quirúrgico
+        
         scroll_y_pos = ttk.Scrollbar(tabla_pos_frame, orient="vertical", command=self.tree_pos.yview)
         self.tree_pos.configure(yscrollcommand=scroll_y_pos.set)
 
-        # Encabezados
+        # Encabezados con anchos proporcionales adaptados al subtotal
         headers_pos = {"cant": "Cant", "desc": "Descripción", "mar": "Marca", "mod": "Modelo", "subt": "Subtotal"}
+        anchos_pos = {"cant": 40, "desc": 120, "mar": 80, "mod": 80, "subt": 70}
+        
         for c, h in headers_pos.items():
             self.tree_pos.heading(c, text=h)
-            # Ajuste de anchos proporcional a tu imagen
-            ancho = 50 if c == "desc" else 60
-            if c == "cant": ancho = 40
-            self.tree_pos.column(c, width=10, anchor="center")
+            self.tree_pos.column(c, width=anchos_pos[c], anchor="center" if c != "desc" else "w")
 
-        # Empaquetado con scroll a la derecha
         scroll_y_pos.pack(side="right", fill="y")
         self.tree_pos.pack(side="left", fill="both", expand=True)
 
+        # 3. --- TARJETA DE TOTALES PREMIUM (COMPLETAMENTE CENTRADA) ---
+        # Se posiciona de forma compacta inmediatamente debajo de la tabla
+        self.frame_totales = tk.Frame(panel_der, bg="white", bd=0, highlightthickness=1, highlightbackground="#dcdde1")
+        self.frame_totales.grid(row=2, column=0, padx=15, pady=10, sticky="ew")
 
-        self.tree_pos.heading("cant", text="Cant")
-        self.tree_pos.heading("desc", text="Descripción")
-        self.tree_pos.heading("mar", text="Marca")
-        self.tree_pos.heading("mod", text="Modelo")
-        self.tree_pos.heading("subt", text="Subtotal")
-        self.tree_pos.column("cant", width=40, anchor="center")
-        self.tree_pos.column("desc", width=120, anchor="center")
-        self.tree_pos.column("mar", width=80, anchor="center")
-        self.tree_pos.column("mod", width=80, anchor="center")
-        self.tree_pos.column("subt", width=70, anchor="center")
+        self.lbl_subtotal_pos = tk.Label(self.frame_totales, text="Subtotal: $0.00", font=("Segoe UI", 10), fg="#000000", bg="white")
+        self.lbl_subtotal_pos.pack(pady=(12, 2), anchor="center")
+
+        self.lbl_desc_pos = tk.Label(self.frame_totales, text="Descuento: $0.00 (0%)", font=("Segoe UI", 10), fg="#e67e22", bg="white")
+        self.lbl_desc_pos.pack(pady=2, anchor="center")
+
+        # Línea divisoria minimalista interna de la tarjeta de costos
+        div_line = tk.Frame(self.frame_totales, bg="#f5f6fa", height=1)
+        div_line.pack(fill="x", padx=35, pady=6)
+
+        self.lbl_total_pos = tk.Label(self.frame_totales, text="TOTAL: $0.00", font=("Segoe UI", 22, "bold"), fg="#27ae60", bg="white")
+        self.lbl_total_pos.pack(pady=2, anchor="center")
+
+        self.lbl_bs_pos = tk.Label(self.frame_totales, text="(Bs. 0.00)", font=("Segoe UI", 11), fg="#000000", bg="white")
+        self.lbl_bs_pos.pack(pady=(0, 12), anchor="center")
+
+                # =====================================================================
+        # INYECCIÓN DE ALTA FIDELIDAD: MÓDULO CÉDULA PREMIUM CORREGIDO
+        # =====================================================================
+        # Usamos un relieve plano integrado al fondo azul noche original
+        cedula_container = tk.Frame(panel_der, bg="#2c3e50")
+        cedula_container.grid(row=3, column=0, padx=25, pady=15, sticky="ew")
         
-        self.tree_pos.pack(fill="x", padx=10)
+        # Sub-rejilla interna para garantizar la simetría absoluta de los textos
+        cedula_container.columnconfigure(0, weight=1)
+
+        # Capa A: Etiqueta estilizada en Gris Plata (CORREGIDO: Sin sticky="center")
+        tk.Label(
+            cedula_container, 
+            text="IDENTIFICACIÓN DEL CLIENTE (CÉDULA)", 
+            font=("Segoe UI", 8, "bold"), 
+            fg="#95a5a6", # Gris plata elegante de tu paleta
+            bg="#2c3e50"
+        ).grid(row=0, column=0, pady=(2, 6)) # Al quitar sticky, Tkinter lo centra automáticamente
         
+        # Capa B: Entrada de texto Premium (Fondo oscuro suavizado, sin bordes 3D nativos)
+        self.ent_cedula_pos = tk.Entry(
+            cedula_container, 
+            font=("Consolas", 14, "bold"), # Tipografía ideal para números nítidos
+            width=16, 
+            justify="center", 
+            bg="#34495e", # Tono bícromo que contrasta con el fondo base
+            fg="#ffffff", # Texto blanco puro de alta visibilidad
+            relief="flat",
+            bd=0,
+            highlightthickness=1,
+            highlightbackground="#455a64", # Borde sutil inactivo
+            highlightcolor="#1abc9c",       # El borde se ilumina en verde turquesa al escribir
+            insertbackground="#ffffff"      # Cursor de escritura blanco
+        )
+        self.ent_cedula_pos.grid(row=1, column=0, pady=4)
+        
+        # Capa C: Respuesta dinámica del ERP (CORREGIDO: Sin sticky="center")
+        self.lbl_info_cliente_pos = tk.Label(
+            cedula_container, 
+            text="[Cliente Genérico]", 
+            font=("Segoe UI", 9, "bold", "italic"), 
+            fg="#2ecc71", # Verde esmeralda translúcido
+            bg="#2c3e50"
+        )
+        self.lbl_info_cliente_pos.grid(row=2, column=0, pady=(4, 2))
+
+        # Mapeo del canal original de consulta al presionar Enter
+        self.ent_cedula_pos.bind("<Return>", lambda e: self.verificar_o_registrar_cliente_pos())
+
+
+        # 5. --- BOTONERA DE ACCIONES INTERNAS (FIJADA ABAJO EN EL ROW 4) ---
+        acciones_frame = tk.Frame(panel_der, bg="#2c3e50")
+        acciones_frame.grid(row=4, column=0, padx=15, pady=(5, 15), sticky="ew")
+
+        acciones_frame.columnconfigure(0, weight=1)
+        acciones_frame.columnconfigure(1, weight=1)
+        
+        estilo_btn_pos = {"font": ("Segoe UI", 9, "bold"), "relief": "flat", "cursor": "hand2", "height": 3}
+
+        tk.Button(acciones_frame, text="VACIAR", bg="#f39c12", fg="white", command=self.vaciar_carrito_completo, **estilo_btn_pos).grid(row=0, column=0, padx=4, pady=4, sticky="nsew")
+        tk.Button(acciones_frame, text="BORRAR", bg="#e74c3c", fg="white", command=self.eliminar_del_carrito, **estilo_btn_pos).grid(row=0, column=1, padx=4, pady=4, sticky="nsew")
+        tk.Button(acciones_frame, text="PRECIO", bg="#3498db", fg="white", command=self.modificar_precio_manual, **estilo_btn_pos).grid(row=1, column=0, padx=4, pady=4, sticky="nsew")
+        tk.Button(acciones_frame, text="DESCUENTO", bg="#d86518", fg="white", command=self.abrir_selector_tipo_descuento, **estilo_btn_pos).grid(row=1, column=1, padx=4, pady=4, sticky="nsew")
+        
+        tk.Button(acciones_frame, text="FINALIZAR Y COBRAR", font=("Segoe UI", 14, "bold"), bg="#27ae60", fg="white", relief="flat", cursor="hand2", command=self.finalizar_venta, pady=10).grid(row=2, column=0, columnspan=2, padx=4, pady=4, sticky="nsew")
+
+        
+
+        # =====================================================================
+        # LOGÍSTICA DE REDIMENSIONAMIENTO Y CONTROL DE ENLACES DE SCROLL
+        # =====================================================================
         def ajustar_ancho_frame(event):
-            # Forzamos a que el frame interno tenga el mismo ancho que el canvas
             canvas_pos.itemconfig(self.canvas_window, width=event.width)
 
         canvas_pos.bind("<Configure>", ajustar_ancho_frame)
@@ -323,111 +398,26 @@ class ERPRepuestosApp:
         self.grid_productos.bind("<Configure>", actualizar_scroll)
         canvas_pos.configure(yscrollcommand=scroll_pos.set)
 
-        # Empaquetado final del sistema de scroll
         canvas_pos.pack(side="left", fill="both", expand=True)
         scroll_pos.pack(side="right", fill="y")
         
-        # SOPORTE PARA RUEDA DEL MOUSE (Toque de experto)
-        def _on_mousewheel(event):
-
+        # Saneamiento del bind_all global: Aislamiento milimétrico por presencia de mouse
+        def _ejecutar_scroll_izquierdo(event):
             win_low, win_high = canvas_pos.yview()
             if win_low == 0 and win_high == 1.0:
-                return 
-            canvas_pos.yview_scroll(int(-1*(event.delta/120)), "units")
+                return  
+            canvas_pos.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
+        def _activar_scroll_izquierdo(event=None):
+            canvas_pos.bind_all("<MouseWheel>", _ejecutar_scroll_izquierdo)
 
-        canvas_pos.bind_all("<MouseWheel>", _on_mousewheel)
-        
-    
-        self.tree_pos.pack(fill="x", padx=10)
+        def _desactivar_scroll_izquierdo(event=None):
+            canvas_pos.unbind_all("<MouseWheel>")
 
-        self.frame_totales = tk.Frame(panel_der, bg="white", bd=0, highlightthickness=1, highlightbackground="#dcdde1")
-        self.frame_totales.pack(pady=20, padx=20, fill="x")
-
-        self.lbl_subtotal_pos = tk.Label(self.frame_totales, text="Subtotal: $0.00", font=("Segoe UI", 10), fg="#7f8c8d", bg="white")
-        self.lbl_subtotal_pos.pack(pady=(10, 0))
-
-        self.lbl_desc_pos = tk.Label(self.frame_totales, text="Descuento: $0.00 (0%)", font=("Segoe UI", 10), fg="#e67e22", bg="white")
-        self.lbl_desc_pos.pack()
-
-        self.lbl_total_pos = tk.Label(self.frame_totales, text="TOTAL: $0.00", font=("Segoe UI", 22, "bold"), fg="#27ae60", bg="white")
-        self.lbl_total_pos.pack(pady=5)
-
-        self.lbl_bs_pos = tk.Label(self.frame_totales, text="(Bs. 0.00)", font=("Segoe UI", 11), fg="#95a5a6", bg="white")
-        self.lbl_bs_pos.pack(pady=(0, 10))
-
-
-        acciones_frame = tk.Frame(panel_der, bg="#2c3e50")
-        acciones_frame.pack(fill="x", padx=20, pady=10)
-
-        acciones_frame.columnconfigure(0, weight=1)
-        acciones_frame.columnconfigure(1, weight=1)
-        
-
-        tk.Button(
-            acciones_frame, 
-        text="VACIAR", 
-        font=("Segoe UI", 9, "bold"),
-        bg="#f39c12", 
-        fg="white", 
-        relief="flat", 
-        cursor="hand2",
-        height=3, 
-        command=self.vaciar_carrito_completo
-        ).grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-
-        tk.Button(
-            acciones_frame, 
-            text="BORRAR", 
-            font=("Segoe UI", 9, "bold"),
-            bg="#e74c3c", 
-            fg="white",
-            relief="flat",
-            cursor="hand2",
-            height=3, 
-            command=self.eliminar_del_carrito
-        ).grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
-        
-        tk.Button(
-            acciones_frame, 
-            text="PRECIO", 
-            font=("Segoe UI", 9, "bold"),
-            bg="#3498db", 
-            fg="white", 
-            relief="flat", 
-            cursor="hand2",
-            height=3, 
-            command=self.modificar_precio_manual
-        ).grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
-
-        
-        tk.Button(
-            acciones_frame, 
-            text="DESCUENTO", 
-            font=("Segoe UI", 9, "bold"),
-            bg="#d86518", 
-            fg="white", 
-            relief="flat", 
-            cursor="hand2",
-            height=3, 
-            command=self.abrir_selector_tipo_descuento # Nueva pasarela
-        ).grid(row=1, column=1, padx=5, pady=5, sticky="nsew")
-
-
-        tk.Button(acciones_frame, 
-                  text="FINALIZAR Y COBRAR", 
-                  font=("Segoe UI", 14, "bold"), 
-                  bg="#27ae60",
-                  fg="white", 
-                  relief="flat",
-                  cursor="hand2",
-                  command=self.finalizar_venta, 
-                  pady=10).grid(row=2, 
-                                column=0, 
-                                columnspan=2, 
-                                padx=5, 
-                                pady=5, 
-                                sticky="nsew")
+        canvas_pos.bind("<Enter>", _activar_scroll_izquierdo)
+        canvas_pos.bind("<Leave>", _desactivar_scroll_izquierdo)
+        self.grid_productos.bind("<Enter>", _activar_scroll_izquierdo)
+        self.grid_productos.bind("<Leave>", _desactivar_scroll_izquierdo)
 
         self.filtrar_productos_pos() # Carga inicial
 
@@ -906,6 +896,8 @@ class ERPRepuestosApp:
                 w.bind("<Enter>", lambda e, cp=card_prod, ln=lbl_nom, lc=lbl_comp, lp=lbl_pre: [
                     cp.config(bg="#f1f2f6", highlightbackground="#3498db"),
                     ln.config(bg="#f1f2f6"), lc.config(bg="#f1f2f6"), lp.config(bg="#f1f2f6")
+                    
+                    
                 ])
                 w.bind("<Leave>", lambda e, cp=card_prod, ln=lbl_nom, lc=lbl_comp, lp=lbl_pre: [
                     cp.config(bg="white", highlightbackground="#dcdde1"),
@@ -1307,7 +1299,7 @@ class ERPRepuestosApp:
         # --- CAPA C: MOTOR INTERNO DE PROCESAMIENTO CONTABLE NETO ---
                 # --- CAPA C: MOTOR INTERNO DE PROCESAMIENTO CONTABLE NETO ---
         def ejecutar_procesamiento(es_credito=False):
-            """Valida, quema la nota de crédito y despacha la orden regulando canjes menores y créditos automáticos."""
+            """Valida, quema la nota de crédito y despacha la orden tratándola como método de pago sin alterar el carrito."""
             codigo_nc_aplicar = ent_codigo_nc.get().strip().upper()
             monto_vale_descuento = 0.0
             costo_vale_reingreso = 0.0
@@ -1317,26 +1309,40 @@ class ERPRepuestosApp:
                     "SELECT monto_a_favor, costo_devuelto FROM notas_credito WHERE codigo_nota=? AND estado='VIGENTE'",
                     (codigo_nc_aplicar,), db_path=DB_VENTAS
                 )
-                if res_nc and len(res_nc) > 0:
-                    monto_vale_descuento, costo_vale_reingreso = res_nc[0]
+                # --- CORRECCIÓN QUIRÚRGICA: ACCESO INDEXADO SEGURO AL ÍNDICE [0] ---
+                if res_nc and len(res_nc) > 0 and len(res_nc[0]) >= 2:
+                    monto_vale_descuento, costo_vale_reingreso = res_nc[0] # <--- Acceso corregido al primer registro
+                    
+                    # Congelamos el costo original del reingreso viejo para el compensador de ganancias
+                    self.costo_vale_reingreso_activo = float(costo_vale_reingreso)
+                    
+                    # Quemamos el vale en la base de datos cambiando su estado
                     consulta("UPDATE notas_credito SET estado='APLICADA' WHERE codigo_nota=?", (codigo_nc_aplicar,), fetch=False, db_path=DB_VENTAS)
 
-            # Logística de protección de caja por canje menor con devolución en efectivo
+
+
+            # --- LOGÍSTICA DE RETORNO POR CAMBIO MENOR ---
+            # Si el dinero a favor es mayor al total de la compra, le entregamos su vuelto físico
+                        # =====================================================================
+            # LOGÍSTICA DE PAGO CON VALE: LIQUIDACIÓN SIN DUPLICAR GANANCIAS VISTAS
+            # =====================================================================
             if monto_vale_descuento > 0 and total_usd < monto_vale_descuento:
+                # Caso A: Canje menor (El vale es más grande que la nueva compra)
                 vuelto_efectivo_entregar = round(monto_vale_descuento - total_usd, 2)
                 descuento_aplicable_hoy = total_usd
-                porcentaje_usado = total_usd / monto_vale_descuento
-                costo_aplicable_hoy = round(costo_vale_reingreso * porcentaje_usado, 2)
-
+                
                 try:
                     cedula_actual = self.ent_cedula_pos.get().strip().replace(".", "").replace("-", "").upper() if hasattr(self, 'ent_cedula_pos') else "GENERICO"
                     if not cedula_actual: cedula_actual = "GENERICO"
                     
+                    # Registramos el egreso del vuelto real de forma aislada
                     fecha_egreso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     glosa_egreso = f"[EGRESO DEVOLUCIÓN EFECTIVO] - Vuelto al Cliente ID: {cedula_actual} (Origen Vale: {codigo_nc_aplicar})"
                     
-                    consulta("INSERT INTO ventas_log (fecha_hora, productos, total, costo_total) VALUES (?, ?, ?, 0.0)",
-                             (fecha_egreso, glosa_egreso, -vuelto_efectivo_entregar), fetch=False, db_path=DB_VENTAS)
+                    # CORRECCIÓN: Total = -Vuelto | Costo Total = -Vuelto -> Ganancia = $0.00 exacto
+                    # Esto equilibra el arqueo de caja físico de hoy sin alterar tus reportes de utilidades
+                    consulta("INSERT INTO ventas_log (fecha_hora, productos, total, costo_total) VALUES (?, ?, ?, ?)",
+                             (fecha_egreso, glosa_egreso, -vuelto_efectivo_entregar, -vuelto_efectivo_entregar), fetch=False, db_path=DB_VENTAS)
                     
                     messagebox.showinfo("Entregar Vuelto", 
                                         f"🔄 CAMBIO MENOR - DEVOLUCIÓN EN EFECTIVO\n\n💵 ENTREGUE AL CLIENTE: ${vuelto_efectivo_entregar:.2f} EN EFECTIVO", 
@@ -1344,52 +1350,45 @@ class ERPRepuestosApp:
                 except Exception as err_egreso:
                     print(f"DEBUG EGRESO: Error al registrar salida física de caja: {err_egreso}")
             else:
+                # Caso B: El vale es menor o igual al total de la orden de hoy
                 descuento_aplicable_hoy = monto_vale_descuento
-                costo_aplicable_hoy = costo_vale_reingreso
 
+            # --- CORRECCIÓN CRÍTICA DE LA GANANCIA FANTASMA ---
+            # Para que no se arrastre la ganancia vieja ni altere el total bruto de hoy, 
+            # inyectamos el ítem virtual de balance en RAM igualando el precio con el costo.
+            # Matemáticamente: Precio (-4.85) - Costo (-4.85) = $0.00 GANANCIA EN EL ASIENTO DEL VALE.
             if descuento_aplicable_hoy > 0:
                 self.carrito.append({
-                    'codigo': "INFO-NC", 'nombre': f"[CANJE APLICADO CON VALE {codigo_nc_aplicar}]",
-                    'marca': "CANJE", 'modelo': "BALANCE", 'precio': -descuento_aplicable_hoy,
-                    'costo': -costo_aplicable_hoy, 'cantidad': 1
+                    'codigo': "INFO-NC", 
+                    'nombre': f"[CANJE APLICADO CON VALE {codigo_nc_aplicar}]",
+                    'marca': "CANJE", 
+                    'modelo': "BALANCE", 
+                    'precio': -descuento_aplicable_hoy,
+                    'costo': -descuento_aplicable_hoy, # <--- Clave: Igual al precio para anular ganancia
+                    'cantidad': 1
                 })
 
-            # --- EXTRAER CÉDULA PARA ASIGNACIÓN DE CONTADO O CRÉDITO ---
+            # --- EXTRAER CÉDULA PARA ASIGNACIÓN DE FLUJO ---
             cedula_actual = self.ent_cedula_pos.get().strip().replace(".", "").replace("-", "").upper() if hasattr(self, 'ent_cedula_pos') else ""
 
-            # 5. BIFURCACIÓN DE FLUJO: CRÉDITO AUTOMATIZADO POR CÉDULA
             if es_credito:
-                # BLOQUEO DE SEGURIDAD: Impedir créditos a clientes anónimos
                 if not cedula_actual or cedula_actual == "GENERICO":
-                    messagebox.showerror(
-                        "Crédito Denegado", 
-                        "❌ ERROR OPERACIONAL\n\nNo se puede registrar una venta a crédito sin un deudor.\n"
-                        "Por favor, introduzca primero la cedula del cliente en la barra superior del POS y presione Enter antes de cobrar.", 
-                        parent=win_modal
-                    )
+                    messagebox.showerror("Crédito Denegado", "❌ ERROR OPERACIONAL\n\nNo se puede registrar una venta a crédito sin un deudor.", parent=win_modal)
                     return
 
-                # Consultamos el nombre del cliente asociado a esa cédula en la DB de perfiles
                 res_cliente = consulta("SELECT nombre FROM clientes WHERE cedula = ?", (cedula_actual,), db_path=DB_CLIENTES)
-                
                 if res_cliente and len(res_cliente) > 0:
                     nombre_deudor = res_cliente[0][0]
-                    # Logística Profesional: Formateamos el registro combinando Nombre y Cédula
                     cliente_registro_credito = f"{nombre_deudor} (C.I: {cedula_actual})"
-                    
-                    # Ejecutamos el guardado de forma directa sin abrir subventanas manuales feas
                     self.guardar_credito_final(cliente_registro_credito, win_modal, modo="credito")
                 else:
-                    messagebox.showerror(
-                        "Cliente No Registrado", 
-                        f"❌ ERROR DE VALIDACIÓN\n\nLa cedula [{cedula_actual}] no está registrada en el sistema.\n"
-                        "Por favor, presione Enter sobre el campo de cedula en el POS para darlo de alta antes de procesar el crédito.", 
-                        parent=win_modal
-                    )
+                    messagebox.showerror("Cliente No Registrado", f"❌ ERROR DE VALIDACIÓN\n\nLa cedula [{cedula_actual}] no está registrada.", parent=win_modal)
                     return
             else:
-                # Si es de contado, se liquida de forma directa y limpia asociando la cédula al log de ventas
                 self.guardar_credito_final("CONTADO", win_modal, modo="contado")
+
+
+
 
 
 
@@ -1441,35 +1440,59 @@ class ERPRepuestosApp:
             costo_total_venta = 0.0
             resumen_productos = []
 
-            # Processing del carrito y descuento de inventario
+            # Recuperamos los metadatos congelados de la transacción desde ejecutar_procesamiento
+            es_un_canje_activo = hasattr(self, 'vale_pago_activo') and self.vale_pago_activo is not None
+            costo_producto_viejo_devuelto = getattr(self, 'costo_vale_reingreso_activo', 0.00)
+
+                        # =====================================================================
+            # CONTROL DE COSTOS REFACTORIZADO Y BLINDADO (GANANCIA EN POSITIVO)
+            # =====================================================================
             for p in self.carrito:
-                # Sincronizamos los precios del carrito usando la tasa congelada para esta transacción
                 p_ajustado = (p['precio'] * tasa_c) / self.tasa_actual
                 desc_u = p.get('descuento', 0.0)
                 subtotal_item = (p_ajustado - desc_u) * p['cantidad']
                 
                 total_venta += subtotal_item
-                costo_total_venta += p['costo'] * p['cantidad']
+                
+                # --- SISTEMA DE CONTROL DE COSTOS DE AUDITORÍA CORPORATIVO ---
+                if p['codigo'] == "INFO-NC":
+                    # --- CORRECCIÓN QUIRÚRGICA: LEY DE SIGNOS ---
+                    # Para que la ganancia de hoy de la fila del canje dé en POSITIVO,
+                    # el costo del vale virtual debe ser exactamente igual a su precio negativo.
+                    # Esto equilibra la ecuación: Precio ($0.00) - Costo (-X) = +X Ganancia Real.
+                    p_costo_ajustado = (p['precio'] * tasa_c) / self.tasa_actual
+                    costo_total_venta += p_costo_ajustado * p['cantidad']
+                else:
+                    # Si es un producto físico normal (el nuevo), acumulamos su costo regular
+                    costo_total_venta += p['costo'] * p['cantidad']
                 
                 detalle = f"[{p['codigo']}] {p['nombre']} x{p['cantidad']} (Ref: ${p_ajustado:.2f})"
                 resumen_productos.append(detalle)
 
-                # Descuento físico de existencias (Combos vs Repuestos Sueltos)
-                if p.get('es_combo'):
-                    for cod_pieza, cant_en_combo in p['receta']:
-                        total_unidades_descontar = p['cantidad'] * cant_en_combo
+                # Descuento físico de existencias en almacén
+                if p['codigo'] != "INFO-NC":
+                    if p.get('es_combo'):
+                        for cod_pieza, cant_en_combo in p['receta']:
+                            total_unidades_descontar = p['cantidad'] * cant_en_combo
+                            consulta("UPDATE repuestos SET cantidad = cantidad - ? WHERE codigo = ?", 
+                                    (total_unidades_descontar, cod_pieza), fetch=False)
+                    else:
                         consulta("UPDATE repuestos SET cantidad = cantidad - ? WHERE codigo = ?", 
-                                (total_unidades_descontar, cod_pieza), fetch=False)
-                else:
-                    consulta("UPDATE repuestos SET cantidad = cantidad - ? WHERE codigo = ?", 
-                            (p['cantidad'], p['codigo']), fetch=False)
+                                (p['cantidad'], p['codigo']), fetch=False)
+
+            # --- REMOVEMOS CUALQUIER OTRA FÓRMULA DE OPERADORES ABAJO ---
+            if es_un_canje_activo:
+                # El costo total ya se calculó balanceado en el bucle superior
+                self.vale_pago_activo = None
+                self.monto_vale_aplicado = 0.00
+                self.costo_vale_reingreso_activo = 0.00
+
 
             # Cálculo exacto en Bolívares usando la tasa consolidada arriba
             total_bs = total_venta * tasa_c
             fecha_v = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             # --- NUEVA TRAZABILIDAD INTEGRAL POR CÉDULA DEL CLIENTE ---
-            # Extraemos lo ingresado en la barra superior del POS limpiando caracteres especiales
             cedula_factura = self.ent_cedula_pos.get().strip().replace(".", "").replace("-", "").upper() if hasattr(self, 'ent_cedula_pos') else "GENERICO"
             if not cedula_factura: 
                 cedula_factura = "GENERICO"
@@ -1478,14 +1501,20 @@ class ERPRepuestosApp:
             if modo == "credito":
                 metodo_auditoria = f"[MÉTODO: CRÉDITO PENDIENTE | CEDULA: {cedula_factura}]"
             else:
-                metodo_seleccionado = self.var_metodo_pago.get() if hasattr(self, 'var_metodo_pago') else "DÓLARES ($)"
-                metodo_auditoria = f"[MÉTODO: {metodo_seleccionado} | TASA REF: {tasa_c:.2f} | CEDULA: {cedula_factura}]"
+                if hasattr(self, 'vale_pago_activo') and self.vale_pago_activo:
+                    metodo_auditoria = f"[MÉTODO: LIQUIDADO CON VALE CANJE {self.vale_pago_activo} | CEDULA: {cedula_factura}]"
+                    self.vale_pago_activo = None
+                else:
+                    metodo_seleccionado = self.var_metodo_pago.get() if hasattr(self, 'var_metodo_pago') else "DÓLARES ($)"
+                    metodo_auditoria = f"[MÉTODO: {metodo_seleccionado} | TASA REF: {tasa_c:.2f} | CEDULA: {cedula_factura}]"
 
             # Concatenación en la columna flexible TEXT para auditoría retrocompatible
             lista_productos_con_pago = resumen_productos + [metodo_auditoria]
             productos_str_final = ", ".join(lista_productos_con_pago)
-            
-            # 3. PERSISTENCIA EN DISCO DENTRO DE LAS DBs
+
+            # =====================================================================
+            # 3. PERSISTENCIA EN DISCO DENTRO DE LAS BASES DE DATOS RELACIONALES
+            # =====================================================================
             if modo == "credito":
                 consulta("""INSERT INTO cuentas_por_cobrar 
                             (cliente, fecha_deuda, detalle_productos, monto_total, costo_total, costo_pendiente) 
@@ -1506,21 +1535,24 @@ class ERPRepuestosApp:
             # 4. REINICIO AUTOMÁTICO DEL MÓDULO DE CLIENTES DEL POS
             if hasattr(self, 'ent_cedula_pos'):
                 self.ent_cedula_pos.delete(0, "end")
-                self.lbl_info_cliente_pos.config(text="[Cliente Generico]", fg="#bdc3c7")
+                self.lbl_info_cliente_pos.config(text="[Cliente Genérico]", fg="#bdc3c7")
 
-            
-
-            # 5. LIMPIEZA Y ACTUALIZACIÓN EN CASCADA DE PANTALLAS
+            # 5. LIMPIEZA Y ACTUALIZACIÓN EN CASCADA DE LAS REJILLAS VISUALES
             self.carrito = []
             self.actualizar_tabla_pos()
             self.filtrar_productos_pos()
             self.actualizar_estadisticas() 
             self.cargar_tabla_gestion()
-            if "finanzas" in self.frames: self.actualizar_tabla_finanzas()
-            if "creditos" in self.frames: self.cargar_tabla_creditos()
+            
+            # Refrescos asíncronos cruzados condicionales si las pantallas están en memoria
+            if "finanzas" in self.frames: 
+                self.actualizar_tabla_finanzas()
+            if "creditos" in self.frames: 
+                self.cargar_tabla_creditos()
 
         except Exception as e:
             messagebox.showerror("Error Crítico", f"No se pudo completar la operación: {e}")
+
 
 
 
@@ -3179,11 +3211,19 @@ class ERPRepuestosApp:
         resultados = consulta(query, db_path=DB_VENTAS)
         opciones = [r[0] for r in resultados]
         
+        # --- SOLUCIÓN CRÍTICA: INYECTAR HOY SI LA TABLA ESTÁ VACÍA O ES UNA VENTA NUEVA ---
+        fecha_hoy_sistema = datetime.now().strftime(sql_format)
+        if fecha_hoy_sistema not in opciones:
+            opciones.insert(0, fecha_hoy_sistema)
+            
         self.combo_valor.config(values=opciones)
-        if opciones:
-            self.var_valor.set(opciones[0]) # Selecciona el más reciente por defecto
+        
+        # Si el valor actual está vacío o ya no pertenece a las opciones, forzamos el periodo actual
+        if not self.var_valor.get() or self.var_valor.get() == "Todos los registros" or self.var_valor.get() not in opciones:
+            self.var_valor.set(fecha_hoy_sistema) 
         
         self.actualizar_tabla_finanzas()
+
 
     def aplicar_descuento_item(self):
         sel = self.tree_pos.selection()
@@ -4961,7 +5001,7 @@ class ERPRepuestosApp:
             try:
                 num_nc = f"NC-{random.randint(1000, 9999)}"
                 
-                # Guardamos la Nota de Crédito usando el nombre e identidad que el sistema auto-detectó
+                # 1. Guardamos la Nota de Crédito con estado VIGENTE de forma regular
                 consulta(
                     """INSERT INTO notas_credito 
                        (codigo_nota, factura_origen_id, cliente, monto_a_favor, costo_devuelto, estado) 
@@ -4969,6 +5009,24 @@ class ERPRepuestosApp:
                     (num_nc, id_venta, nombre_detectado, round(monto_acumulado_vale, 2), round(costo_acumulado_reingreso, 2),),
                     fetch=False, db_path=DB_VENTAS
                 )
+
+                # 2. --- EL ASIENTO DE REVERSIÓN CONTABLE EXCLUSIVO (EL DESCUENTO REAL VISTA) ---
+                # Recuperamos los datos de la factura vieja original que estamos anulando hoy
+                res_factura_vieja = consulta("SELECT total, costo_total FROM ventas_log WHERE id = ?", (id_venta,), db_path=DB_VENTAS)
+                if res_factura_vieja and len(res_factura_vieja) > 0:
+                    total_viejo, costo_viejo = res_factura_vieja[0]
+                    ganancia_vieja_anular = round(float(total_viejo) - float(costo_viejo), 2)
+                else:
+                    ganancia_vieja_anular = 0.00
+
+                # Inyectamos una fila de contra-asiento en el log de finanzas el día de hoy.
+                # Al setear Total = 0.00 y Costo = Ganancia Vieja, la utilidad de esta fila dará
+                # exactamente MENOS la ganancia de la factura vieja (-$5.61), eliminándola del sistema.
+                fecha_reversion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                glosa_reversion = f"[ANULACIÓN DE UTILIDAD] - Extinción de Margen por Devolución de Factura FACT-{str(id_venta).zfill(5)}"
+                
+                consulta("INSERT INTO ventas_log (fecha_hora, productos, total, costo_total) VALUES (?, ?, 0.0, ?)",
+                         (fecha_reversion, glosa_reversion, ganancia_vieja_anular), fetch=False, db_path=DB_VENTAS)
 
                 # --- COMPROBANTE TICKET EMITIDO ---
                 win_nc_ticket = tk.Toplevel(self.root)
@@ -4986,7 +5044,7 @@ class ERPRepuestosApp:
                     win_nc_ticket.deiconify()
                 ])
 
-                tk.Label(win_nc_ticket, text="🎟️ VALE CONSOLIDADO GENERADO", font=("Segoe UI", 12, "bold"), fg="#2ecc71", bg="#2c3e50", pady=15).pack()
+                tk.Label(win_nc_ticket, text="VALE CONSOLIDADO GENERADO", font=("Segoe UI", 12, "bold"), fg="#2ecc71", bg="#2c3e50", pady=15).pack()
 
                 ticket_frame = tk.Frame(win_nc_ticket, bg="#1e272e", padx=25, pady=15, highlightthickness=1, highlightbackground="#2f3640")
                 ticket_frame.pack(fill="both", expand=True, padx=35, pady=5)
@@ -5004,10 +5062,10 @@ class ERPRepuestosApp:
                 lbl_res_piezas = tk.Label(ticket_frame, text=", ".join(glosas_de_devolucion_log), font=("Segoe UI", 8, "italic"), fg="#819090", bg="#1e272e", wraplength=340, justify="left")
                 lbl_res_piezas.pack(anchor="w")
 
-                tk.Label(win_nc_ticket, text="📌 Introduzca este código en el Punto de Venta\nal finalizar la nueva compra para restar el saldo consolidado.", 
+                tk.Label(win_nc_ticket, text="Introduzca este código en el Punto de Venta\nal finalizar la nueva compra para restar el saldo consolidado.", 
                          font=("Segoe UI", 8, "italic"), fg="#bdc3c7", bg="#2c3e50", justify="center", pady=10).pack()
 
-                tk.Button(win_nc_ticket, text="✅ ENTENDIDO / CERRAR", bg="#27ae60", fg="white", activebackground="#2ecc71",
+                tk.Button(win_nc_ticket, text="ENTENDIDO / CERRAR", bg="#27ae60", fg="white", activebackground="#2ecc71",
                           font=("Segoe UI", 10, "bold"), relief="flat", height=2, cursor="hand2", command=win_nc_ticket.destroy).pack(fill="x", padx=35, pady=(5, 15))
 
                 win.destroy()
