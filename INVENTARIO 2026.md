@@ -633,7 +633,7 @@ class ERPRepuestosApp:
             widget.destroy()
 
         for i in range(5):
-            self.grid_productos.grid_columnconfigure(i, weight=1)
+            self.grid_productos.grid_columnconfigure(i, weight=1, minsize=175)
         
         self.categoria_actual = categoria
         busqueda = self.ent_buscar_pos.get().strip()
@@ -733,14 +733,32 @@ class ERPRepuestosApp:
                         cp.config(highlightbackground="#dcdde1", bg="white"),
                         hc.config(bg="#2c3e50"), li.config(bg="#2c3e50", fg="#bdc3c7")
                     ])
+
+                    self.grid_productos.after(10, lambda: [
+                self.grid_productos.master.configure(scrollregion=self.grid_productos.master.bbox("all"), bg="#f5f7f8")
+            ])
+            return
             
             # Sincronización del área deslizable
-            self.grid_productos.update_idletasks()
+                    # =====================================================================
+        # 🚀 SOLUCIÓN ENCADENADA CONTRA EL ERROR DE PRIMERA CARGA
+        # =====================================================================
+        def forzar_actualizacion_geometria():
             try:
-                canvas_p = self.grid_productos.master
-                canvas_p.configure(scrollregion=canvas_p.bbox("all"), bg="#f5f7f8")
-            except: pass
-            return
+                # 1. Obligamos al contenedor de los productos a medir sus tarjetas reales
+                self.grid_productos.update_idletasks()
+                
+                # 2. Buscamos el Canvas y le ordenamos reajustar su área deslizable
+                canvas_pos = self.grid_productos.master
+                canvas_pos.configure(scrollregion=canvas_pos.bbox("all"), bg="#f5f7f8")
+            except:
+                pass
+
+        # Ejecutamos el primer refresco a los 10ms (elimina el colapso al entrar)
+        self.grid_productos.after(10, forzar_actualizacion_geometria)
+        
+        # Ejecutamos un segundo refresco de refuerzo a los 80ms (asegura el ancho real)
+        self.grid_productos.after(80, forzar_actualizacion_geometria)
 
   
 
@@ -903,6 +921,15 @@ class ERPRepuestosApp:
                     cp.config(bg="white", highlightbackground="#dcdde1"),
                     ln.config(bg="white"), lc.config(bg="white"), lp.config(bg="white")
                 ])
+
+                
+                
+        try:
+            # Buscamos de forma segura el Canvas ancestro para reajustar su caja deslizable
+            canvas_pos = self.grid_productos.master
+            canvas_pos.configure(scrollregion=canvas_pos.bbox("all"), bg="#f5f7f8")
+        except:
+            pass
 
 
 
@@ -1192,236 +1219,278 @@ class ERPRepuestosApp:
 
 
     def finalizar_venta(self):
-        """Despliega la pasarela de confirmación final con corrección estricta de desempaquetado de base de datos."""
+        """Despliega la pasarela avanzada bimoneda con corrección estricta de desempaquetado de vales NC."""
         if not self.carrito: 
             messagebox.showwarning("Carrito vacío", "No hay productos para procesar.")
             return
         
-        # 1. Obtener la tasa de cobro actual de forma segura
         try:
             tasa_c = float(self.ent_tasa_cobro.get().strip() if hasattr(self, 'ent_tasa_cobro') else self.tasa_actual)
         except:
             tasa_c = self.tasa_actual
 
-        # 2. Calcular el TOTAL REAL original de la orden en caliente
-        total_usd = 0.0
+        # 1. Calcular el Total Neto Inicial de la orden en caliente
+        self.total_usd_base = 0.0
         for p in self.carrito:
             precio_ajustado = (p['precio'] * tasa_c) / self.tasa_actual
             desc_u = p.get('descuento', 0.0)
-            total_usd += (precio_ajustado - desc_u) * p['cantidad']
+            self.total_usd_base += (precio_ajustado - desc_u) * p['cantidad']
 
-        total_bs = total_usd * tasa_c
+        # Variables mutables de control para el descuento del vale
+        self.descuento_vale_activo = 0.0
+        self.vale_pago_activo = None
+        self.costo_vale_reingreso_activo = 0.0
 
-        # 3. Crear Ventana Modal Transitoria con Geometría Ampliada
+        # Ventana Modal Transitoria
         win_modal = tk.Toplevel(self.root)
-        win_modal.title("Confirmar Transacción")
-        win_modal.geometry("450x640")  
+        win_modal.title("Confirmar Transacción Multimoneda")
+        win_modal.geometry("460x740") 
         win_modal.configure(bg="#2c3e50")
         win_modal.transient(self.root)
         win_modal.grab_set()
         win_modal.resizable(False, False)
 
         win_modal.update_idletasks()
-        x = (win_modal.winfo_screenwidth() // 2) - (450 // 2)
-        y = (win_modal.winfo_screenheight() // 2) - (640 // 2)
+        x = (win_modal.winfo_screenwidth() // 2) - (460 // 2)
+        y = (win_modal.winfo_screenheight() // 2) - (740 // 2)
         win_modal.geometry(f"+{x}+{y}")
         
-        tk.Label(win_modal, text="🏁 FINALIZAR VENTA", font=("Segoe UI", 16, "bold"), 
-                 fg="#27ae60", bg="#2c3e50", pady=15).pack()
+        tk.Label(win_modal, text="🏁 LIQUIDACIÓN DE FACTURA", font=("Segoe UI", 15, "bold"), fg="#27ae60", bg="#2c3e50", pady=10).pack()
 
-        # --- CAPA A: PANEL DE RESUMEN FINANCIERO ---
-        resumen = tk.Frame(win_modal, bg="#34495e", padx=20, pady=15)
-        resumen.pack(fill="x", padx=40, pady=(5, 10))
+        # --- PANEL DE RESUMEN FINANCIERO DINÁMICO ---
+        resumen = tk.Frame(win_modal, bg="#34495e", padx=20, pady=10)
+        resumen.pack(fill="x", padx=30, pady=5)
 
-        tk.Label(resumen, text="TOTAL A COBRAR:", font=("Segoe UI", 9, "bold"), fg="#bdc3c7", bg="#34495e").pack()
+        tk.Label(resumen, text="TOTAL NETO A COBRAR:", font=("Segoe UI", 9, "bold"), fg="#bdc3c7", bg="#34495e").pack()
+        lbl_f_usd = tk.Label(resumen, text=f"${self.total_usd_base:.2f}", font=("Segoe UI", 26, "bold"), fg="#27ae60", bg="#34495e")
+        lbl_f_usd.pack()
+        lbl_f_bs = tk.Label(resumen, text=f"Bs. {self.total_usd_base * tasa_c:,.2f}", font=("Segoe UI", 12, "bold"), fg="white", bg="#34495e")
+        lbl_f_bs.pack(pady=2)
+
+        # Alerta visual de Vale adjuntado
+        lbl_vale_txt = tk.Label(resumen, text="", font=("Segoe UI", 9, "bold"), fg="#f1c40f", bg="#34495e")
+        lbl_vale_txt.pack()
+
+        # --- DESGLOSE DE PAGO RECIBIDO ---
+        split_frame = tk.Frame(win_modal, bg="#2c3e50", pady=5)
+        split_frame.pack(fill="x", padx=30)
         
-        self.lbl_final_usd = tk.Label(resumen, text=f"${total_usd:,.2f}", font=("Segoe UI", 28, "bold"), fg="#27ae60", bg="#34495e")
-        self.lbl_final_usd.pack()
-        
-        self.lbl_final_bs = tk.Label(resumen, text=f"Bs. {total_bs:,.2f}", font=("Segoe UI", 13, "bold"), fg="white", bg="#34495e")
-        self.lbl_final_bs.pack(pady=(2, 5))
+        tk.Label(split_frame, text="⚙️ DESGLOSE DE PAGO RECIBIDO", font=("Segoe UI", 10, "bold"), fg="#f39c12", bg="#2c3e50").pack(anchor="w", pady=(5, 5))
 
-        self.lbl_vale_descuento_txt = tk.Label(resumen, text="", font=("Segoe UI", 9, "bold"), fg="#f1c40f", bg="#34495e")
-        self.lbl_vale_descuento_txt.pack()
+        # --- INTERRUPTORES DE RECALCULO AUTOMÁTICO EN CALIENTE ---
+        def auto_calcular_bs(event=None):
+            try:
+                # El neto requerido a cobrar en caja nunca puede ser negativo
+                neto_usd = max(0.0, self.total_usd_base - self.descuento_vale_activo)
+                
+                # Sanitización estricta de strings vacíos a float 0.0
+                raw_usd = self.ent_pago_usd.get().strip()
+                pago_u = float(raw_usd) if raw_usd else 0.0
+                
+                restante_usd = max(0.0, neto_usd - pago_u)
+                self.ent_pago_bs.delete(0, "end")
+                self.ent_pago_bs.insert(0, f"{round(restante_usd * tasa_c, 2):.2f}")
+            except ValueError: pass
 
-        tk.Label(resumen, text="MÉTODO DE PAGO:", font=("Segoe UI", 8, "bold"), fg="#bdc3c7", bg="#34495e").pack(pady=(8, 2))
-        self.var_metodo_pago = tk.StringVar(value="DÓLARES ($)")
-        combo_metodo = ttk.Combobox(
-            resumen, textvariable=self.var_metodo_pago, values=["DÓLARES ($)", "BOLÍVARES (Bs.)"], 
-            state="readonly", justify="center", font=("Segoe UI", 9, "bold")
+        def auto_calcular_usd(event=None):
+            try:
+                neto_bs = max(0.0, (self.total_usd_base - self.descuento_vale_activo) * tasa_c)
+                
+                raw_bs = self.ent_pago_bs.get().strip()
+                pago_b = float(raw_bs) if raw_bs else 0.0
+                
+                restante_bs = max(0.0, neto_bs - pago_b)
+                self.ent_pago_usd.delete(0, "end")
+                self.ent_pago_usd.insert(0, f"{round(restante_bs / tasa_c, 2):.2f}")
+            except ValueError: pass
+
+        # --- BARRA DE SELECCIÓN RÁPIDA (QUICK-TOKENS) ---
+        quick_bar = tk.Frame(split_frame, bg="#2c3e50")
+        quick_bar.pack(fill="x", pady=(0, 10))
+        quick_bar.columnconfigure(0, weight=1); quick_bar.columnconfigure(1, weight=1)
+
+        estilo_token = {"relief": "flat", "font": ("Segoe UI", 9, "bold"), "pady": 6, "cursor": "hand2"}
+
+        btn_token_bs = tk.Button(
+            quick_bar, text="🇻🇪 Bs. TOTAL (100%)", bg="#2980b9", fg="white", activebackground="#3498db",
+            command=lambda: [
+                self.ent_pago_bs.delete(0, "end"), self.ent_pago_bs.insert(0, f"{max(0.0, (self.total_usd_base - self.descuento_vale_activo) * tasa_c):.2f}"),
+                self.ent_pago_usd.delete(0, "end"), self.ent_pago_usd.insert(0, "0.00"),
+                self.ent_pago_bs.focus_set()
+            ], **estilo_token
         )
-        combo_metodo.pack(pady=2, fill="x", padx=20)
+        btn_token_bs.grid(row=0, column=0, padx=(0, 4), sticky="nsew")
 
-        # --- CAPA B: FORMULARIO DE VALES DE CANJE Y NOTAS DE CRÉDITO ---
-        nc_frame = tk.Frame(win_modal, bg="#2c3e50", pady=5)
-        nc_frame.pack(fill="x", padx=40)
+        btn_token_usd = tk.Button(
+            quick_bar, text="💵 $ TOTAL (100%)", bg="#27ae60", fg="white", activebackground="#2ecc71",
+            command=lambda: [
+                self.ent_pago_bs.delete(0, "end"), self.ent_pago_bs.insert(0, "0.00"),
+                self.ent_pago_usd.delete(0, "end"), self.ent_pago_usd.insert(0, f"{max(0.0, self.total_usd_base - self.descuento_vale_activo):.2f}"),
+                self.ent_pago_usd.focus_set()
+            ], **estilo_token
+        )
+        btn_token_usd.grid(row=0, column=1, padx=(4, 0), sticky="nsew")
+
+        # Fila Bolívares
+        f_bs = tk.Frame(split_frame, bg="#2c3e50", pady=3)
+        f_bs.pack(fill="x")
+        tk.Label(f_bs, text="Monto Digital (Bs.):", font=("Segoe UI", 9, "bold"), fg="white", bg="#2c3e50", width=20, anchor="w").pack(side="left")
+        self.ent_pago_bs = tk.Entry(f_bs, font=("Segoe UI", 11, "bold"), justify="center", width=15)
+        self.ent_pago_bs.pack(side="left", fill="x", expand=True)
+        self.ent_pago_bs.insert(0, f"{self.total_usd_base * tasa_c:.2f}") 
+
+        # Fila Dólares
+        f_usd = tk.Frame(split_frame, bg="#2c3e50", pady=3)
+        f_usd.pack(fill="x")
+        tk.Label(f_usd, text="Monto en Efectivo ($):", font=("Segoe UI", 9, "bold"), fg="white", bg="#2c3e50", width=20, anchor="w").pack(side="left")
+        self.ent_pago_usd = tk.Entry(f_usd, font=("Segoe UI", 11, "bold"), justify="center", width=15)
+        self.ent_pago_usd.pack(side="left", fill="x", expand=True)
+        self.ent_pago_usd.insert(0, "0.00")
         
+        self.ent_pago_bs.focus_set()
+
+        self.ent_pago_usd.bind("<KeyRelease>", auto_calcular_bs)
+        self.ent_pago_bs.bind("<KeyRelease>", auto_calcular_usd)
+
+        # --- FORMULARIO DE VALES DE CANJE ---
+        nc_frame = tk.Frame(win_modal, bg="#2c3e50", pady=5)
+        nc_frame.pack(fill="x", padx=30)
         tk.Label(nc_frame, text="¿Aplica un Vale de Canje / Nota de Crédito?", font=("Segoe UI", 9, "bold"), fg="#bdc3c7", bg="#2c3e50").pack(anchor="w")
         
-        ent_codigo_nc = tk.Entry(nc_frame, font=("Segoe UI", 12, "bold"), justify="center", fg="#d35400", width=15)
-        nc_frame.pack_propagate(True) # Permitir empaquetado fluido
-        ent_codigo_nc.pack(anchor="w", pady=5)
-        ent_codigo_nc.insert(0, "NC-")
-
+        self.ent_codigo_nc_pos = tk.Entry(nc_frame, font=("Segoe UI", 12, "bold"), justify="center", fg="#d35400", width=15)
+        self.ent_codigo_nc_pos.pack(anchor="w", pady=3)
+        self.ent_codigo_nc_pos.insert(0, "NC-")
+        
         lbl_info_nc = tk.Label(win_modal, text="Si aplica un cambio, ingrese el código arriba.", font=("Segoe UI", 8, "italic"), fg="#3498db", bg="#2c3e50")
-        lbl_info_nc.pack(pady=2)
+        lbl_info_nc.pack()
 
-        def verificar_vale_canje(*args):
-            codigo = ent_codigo_nc.get().strip().upper()
+        # =====================================================================
+        # MOTOR SÍNCRONO CORREGIDO: ACCESO INDEXADO SEGURO AL ÍNDICE [0]
+        # =====================================================================
+        def verificar_vale_canje_en_pos(*args):
+            codigo = self.ent_codigo_nc_pos.get().strip().upper()
             if len(codigo) < 7: 
-                self.lbl_final_usd.config(text=f"${total_usd:,.2f}", fg="#27ae60")
-                self.lbl_final_bs.config(text=f"Bs. {total_bs:,.2f}")
-                self.lbl_vale_descuento_txt.config(text="")
+                self.descuento_vale_activo = 0.0
+                self.vale_pago_activo = None
+                lbl_f_usd.config(text=f"${self.total_usd_base:.2f}", fg="#27ae60")
+                lbl_f_bs.config(text=f"Bs. {self.total_usd_base * tasa_c:,.2f}")
+                lbl_vale_txt.config(text="")
                 lbl_info_nc.config(text="Si aplica un cambio, ingrese el código arriba.", fg="#3498db")
+                auto_calcular_bs()
                 return
             
-            res = consulta("SELECT monto_a_favor, cliente FROM notas_credito WHERE codigo_nota=? AND estado='VIGENTE'", (codigo,), db_path=DB_VENTAS)
-            if res and len(res) > 0:
-                monto_nc, deudor = res[0] # Acceso seguro al primer registro
-                diferencia_usd = max(0.0, total_usd - monto_nc)
-                diferencia_bs = diferencia_usd * tasa_c
+            res = consulta("SELECT monto_a_favor, costo_devuelto, cliente FROM notas_credito WHERE codigo_nota=? AND estado='VIGENTE'", (codigo,), db_path=DB_VENTAS)
+            
+            # CRÍTICO: Verificamos y extraemos de forma segura del índice [0] de la lista
+            if res and len(res) > 0 and len(res[0]) >= 3:
+                monto_nc, costo_nc, deudor = res[0] # <--- CORRECCIÓN: Acceso indexado al registro real
                 
-                self.lbl_vale_descuento_txt.config(text=f"🏷️ VALE DE DEVOLUCIÓN ({deudor}): -${monto_nc:.2f}")
-                self.lbl_final_usd.config(text=f"${diferencia_usd:,.2f}", fg="#f1c40f") 
-                self.lbl_final_bs.config(text=f"Bs. {diferencia_bs:,.2f}")
+                self.descuento_vale_activo = float(monto_nc)
+                self.vale_pago_activo = codigo
+                self.costo_vale_reingreso_activo = float(costo_nc)
+                
+                # RESTRICCIÓN MATEMÁTICA: El neto en caja nunca cae por debajo de cero
+                neto_usd = max(0.0, self.total_usd_base - self.descuento_vale_activo)
+                neto_bs = neto_usd * tasa_c
+                
+                lbl_vale_txt.config(text=f"🏷️ VALE APLICADO ({deudor}): -${self.descuento_vale_activo:.2f}")
+                lbl_f_usd.config(text=f"${neto_usd:.2f}", fg="#f1c40f") 
+                lbl_f_bs.config(text=f"Bs. {neto_bs:,.2f}")
                 lbl_info_nc.config(text=f"✅ Nota de Crédito vinculada con éxito.", fg="#2ecc71")
-            else:
-                self.lbl_final_usd.config(text=f"${total_usd:,.2f}", fg="#27ae60")
-                self.lbl_final_bs.config(text=f"Bs. {total_bs:,.2f}")
-                self.lbl_vale_descuento_txt.config(text="")
-                lbl_info_nc.config(text="❌ Código inválido o ya quemado en sistema.", fg="#e74c3c")
-
-        ent_codigo_nc.bind("<KeyRelease>", verificar_vale_canje)
-
-        tk.Label(win_modal, text="¿Desea procesar el pago y descontar stock?", 
-                 font=("Segoe UI", 9, "bold"), fg="#95a5a6", bg="#2c3e50", pady=10).pack()
-
-        # --- CAPA C: MOTOR INTERNO DE PROCESAMIENTO CONTABLE NETO ---
-                # --- CAPA C: MOTOR INTERNO DE PROCESAMIENTO CONTABLE NETO ---
-        def ejecutar_procesamiento(es_credito=False):
-            """Valida, quema la nota de crédito y despacha la orden tratándola como método de pago sin alterar el carrito."""
-            codigo_nc_aplicar = ent_codigo_nc.get().strip().upper()
-            monto_vale_descuento = 0.0
-            costo_vale_reingreso = 0.0
-
-            if len(codigo_nc_aplicar) >= 7 and codigo_nc_aplicar.startswith("NC-"):
-                res_nc = consulta(
-                    "SELECT monto_a_favor, costo_devuelto FROM notas_credito WHERE codigo_nota=? AND estado='VIGENTE'",
-                    (codigo_nc_aplicar,), db_path=DB_VENTAS
-                )
-                # --- CORRECCIÓN QUIRÚRGICA: ACCESO INDEXADO SEGURO AL ÍNDICE [0] ---
-                if res_nc and len(res_nc) > 0 and len(res_nc[0]) >= 2:
-                    monto_vale_descuento, costo_vale_reingreso = res_nc[0] # <--- Acceso corregido al primer registro
-                    
-                    # Congelamos el costo original del reingreso viejo para el compensador de ganancias
-                    self.costo_vale_reingreso_activo = float(costo_vale_reingreso)
-                    
-                    # Quemamos el vale en la base de datos cambiando su estado
-                    consulta("UPDATE notas_credito SET estado='APLICADA' WHERE codigo_nota=?", (codigo_nc_aplicar,), fetch=False, db_path=DB_VENTAS)
-
-
-
-            # --- LOGÍSTICA DE RETORNO POR CAMBIO MENOR ---
-            # Si el dinero a favor es mayor al total de la compra, le entregamos su vuelto físico
-                        # =====================================================================
-            # LOGÍSTICA DE PAGO CON VALE: LIQUIDACIÓN SIN DUPLICAR GANANCIAS VISTAS
-            # =====================================================================
-            if monto_vale_descuento > 0 and total_usd < monto_vale_descuento:
-                # Caso A: Canje menor (El vale es más grande que la nueva compra)
-                vuelto_efectivo_entregar = round(monto_vale_descuento - total_usd, 2)
-                descuento_aplicable_hoy = total_usd
                 
-                try:
-                    cedula_actual = self.ent_cedula_pos.get().strip().replace(".", "").replace("-", "").upper() if hasattr(self, 'ent_cedula_pos') else "GENERICO"
-                    if not cedula_actual: cedula_actual = "GENERICO"
-                    
-                    # Registramos el egreso del vuelto real de forma aislada
-                    fecha_egreso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    glosa_egreso = f"[EGRESO DEVOLUCIÓN EFECTIVO] - Vuelto al Cliente ID: {cedula_actual} (Origen Vale: {codigo_nc_aplicar})"
-                    
-                    # CORRECCIÓN: Total = -Vuelto | Costo Total = -Vuelto -> Ganancia = $0.00 exacto
-                    # Esto equilibra el arqueo de caja físico de hoy sin alterar tus reportes de utilidades
-                    consulta("INSERT INTO ventas_log (fecha_hora, productos, total, costo_total) VALUES (?, ?, ?, ?)",
-                             (fecha_egreso, glosa_egreso, -vuelto_efectivo_entregar, -vuelto_efectivo_entregar), fetch=False, db_path=DB_VENTAS)
-                    
-                    messagebox.showinfo("Entregar Vuelto", 
-                                        f"🔄 CAMBIO MENOR - DEVOLUCIÓN EN EFECTIVO\n\n💵 ENTREGUE AL CLIENTE: ${vuelto_efectivo_entregar:.2f} EN EFECTIVO", 
-                                        parent=win_modal)
-                except Exception as err_egreso:
-                    print(f"DEBUG EGRESO: Error al registrar salida física de caja: {err_egreso}")
+                # Sincronizar las casillas automáticamente al valor neto corregido
+                self.ent_pago_bs.delete(0, "end")
+                self.ent_pago_bs.insert(0, f"{neto_bs:.2f}")
+                self.ent_pago_usd.delete(0, "end")
+                self.ent_pago_usd.insert(0, "0.00")
             else:
-                # Caso B: El vale es menor o igual al total de la orden de hoy
-                descuento_aplicable_hoy = monto_vale_descuento
+                self.descuento_vale_activo = 0.0
+                self.vale_pago_activo = None
+                lbl_f_usd.config(text=f"${self.total_usd_base:.2f}", fg="#27ae60")
+                lbl_f_bs.config(text=f"Bs. {self.total_usd_base * tasa_c:,.2f}")
+                lbl_vale_txt.config(text="")
+                lbl_info_nc.config(text="❌ Código inválido o ya quemado en sistema.", fg="#e74c3c")
+                auto_calcular_bs()
 
-            # --- CORRECCIÓN CRÍTICA DE LA GANANCIA FANTASMA ---
-            # Para que no se arrastre la ganancia vieja ni altere el total bruto de hoy, 
-            # inyectamos el ítem virtual de balance en RAM igualando el precio con el costo.
-            # Matemáticamente: Precio (-4.85) - Costo (-4.85) = $0.00 GANANCIA EN EL ASIENTO DEL VALE.
-            if descuento_aplicable_hoy > 0:
-                self.carrito.append({
-                    'codigo': "INFO-NC", 
-                    'nombre': f"[CANJE APLICADO CON VALE {codigo_nc_aplicar}]",
-                    'marca': "CANJE", 
-                    'modelo': "BALANCE", 
-                    'precio': -descuento_aplicable_hoy,
-                    'costo': -descuento_aplicable_hoy, # <--- Clave: Igual al precio para anular ganancia
-                    'cantidad': 1
-                })
+        self.ent_codigo_nc_pos.bind("<KeyRelease>", verificar_vale_canje_en_pos)
 
-            # --- EXTRAER CÉDULA PARA ASIGNACIÓN DE FLUJO ---
+        # Motor de procesamiento contable final
+        def confirmar_y_despachar_caja(es_credito=False):
+            try:
+                raw_u = self.ent_pago_usd.get().strip()
+                raw_b = self.ent_pago_bs.get().strip()
+                recibido_usd = float(raw_u) if raw_u else 0.0
+                recibido_bs = float(raw_b) if raw_b else 0.0
+            except ValueError:
+                messagebox.showerror("Error de Caja", "Los montos de pago deben ser numéricos.", parent=win_modal)
+                return
+
+            # El neto requerido final a auditar en la pasarela mixta bimoneda
+            neto_requerido = max(0.0, self.total_usd_base - self.descuento_vale_activo)
+            pago_total_equivalente = recibido_usd + (recibido_bs / tasa_c)
+            
+            if not es_credito and abs(pago_total_equivalente - neto_requerido) > 0.05:
+                messagebox.showerror("Descuadrase de Caja", 
+                                   f"⚠️ EL PAGO NO COINCIDE CON EL NETO.\n\n"
+                                   f"Neto requerido: ${neto_requerido:.2f}\n"
+                                   f"Total ingresado: ${pago_total_equivalente:.2f}\n"
+                                   f"Por favor, ajuste los montos.", parent=win_modal)
+                return
+
+            # Si el pago es exitoso y usó un vale, este se quema en el libro contable de inmediato
+            if self.vale_pago_activo:
+                # Invoca la logística heredada de vuelto físico autónomo si el vale superaba la compra
+                if self.descuento_vale_activo > self.total_usd_base:
+                    vuelto_efectivo = round(self.descuento_vale_activo - self.total_usd_base, 2)
+                    try:
+                        cedula_actual = self.ent_cedula_pos.get().strip().replace(".", "").replace("-", "").upper() if hasattr(self, 'ent_cedula_pos') else "GENERICO"
+                        if not cedula_actual: cedula_actual = "GENERICO"
+                        
+                        fecha_egreso = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        glosa_egreso = f"[EGRESO DEVOLUCIÓN EFECTIVO] - Vuelto al Cliente ID: {cedula_actual} (Origen Vale: {self.vale_pago_activo})"
+                        consulta("INSERT INTO ventas_log (fecha_hora, productos, total, costo_total) VALUES (?, ?, ?, ?)",
+                                 (fecha_egreso, glosa_egreso, -vuelto_efectivo, -vuelto_efectivo), fetch=False, db_path=DB_VENTAS)
+                        
+                        messagebox.showinfo("Entregar Vuelto", f"🔄 CAMBIO MENOR - DEVOLUCIÓN EN EFECTIVO\n\n💵 ENTREGUE AL CLIENTE: ${vuelto_efectivo:.2f} EN EFECTIVO", parent=win_modal)
+                    except Exception as err:
+                        print(f"DEBUG: Error al asentar vuelto físico: {err}")
+                
+                consulta("UPDATE notas_credito SET estado='APLICADA' WHERE codigo_nota=?", (self.vale_pago_activo,), fetch=False, db_path=DB_VENTAS)
+
+            self.pago_repartido_usd = recibido_usd
+            self.pago_repartido_bs = recibido_bs
+
             cedula_actual = self.ent_cedula_pos.get().strip().replace(".", "").replace("-", "").upper() if hasattr(self, 'ent_cedula_pos') else ""
 
             if es_credito:
                 if not cedula_actual or cedula_actual == "GENERICO":
-                    messagebox.showerror("Crédito Denegado", "❌ ERROR OPERACIONAL\n\nNo se puede registrar una venta a crédito sin un deudor.", parent=win_modal)
+                    messagebox.showerror("Crédito Denegado", "❌ No se puede registrar un crédito sin un deudor válido.", parent=win_modal)
                     return
-
                 res_cliente = consulta("SELECT nombre FROM clientes WHERE cedula = ?", (cedula_actual,), db_path=DB_CLIENTES)
                 if res_cliente and len(res_cliente) > 0:
-                    nombre_deudor = res_cliente[0][0]
-                    cliente_registro_credito = f"{nombre_deudor} (C.I: {cedula_actual})"
-                    self.guardar_credito_final(cliente_registro_credito, win_modal, modo="credito")
+                    self.guardar_credito_final(f"{res_cliente[0][0]} (C.I: {cedula_actual})", win_modal, modo="credito")
                 else:
-                    messagebox.showerror("Cliente No Registrado", f"❌ ERROR DE VALIDACIÓN\n\nLa cedula [{cedula_actual}] no está registrada.", parent=win_modal)
-                    return
+                    messagebox.showerror("Cliente No Registrado", f"❌ La cédula [{cedula_actual}] no está registrada.", parent=win_modal)
             else:
                 self.guardar_credito_final("CONTADO", win_modal, modo="contado")
 
-
-
-
-
-
-        # --- CAPA D: CONTENEDOR DE ACCIONES EN MATRIZ CORPORATIVA (GRID) ---
+        # --- BOTONERA PRINCIPAL EN MATRIZ ---
         btns_final_container = tk.Frame(win_modal, bg="#2c3e50")
-        btns_final_container.pack(side="bottom", fill="x", padx=40, pady=(5, 20))
+        btns_final_container.pack(side="bottom", fill="x", padx=30, pady=(5, 15))
         btns_final_container.columnconfigure(0, weight=1)
-
         estilo_final_btn = {"relief": "flat", "height": 2, "font": ("Segoe UI", 10, "bold"), "cursor": "hand2"}
 
-        btn_contado = tk.Button(
-            btns_final_container, text="FINALIZAR Y COBRAR (CONTADO)", bg="#27ae60", fg="white", 
-            activebackground="#2ecc71", activeforeground="white", command=lambda: ejecutar_procesamiento(es_credito=False), **estilo_final_btn
-        )
-        btn_contado.grid(row=0, column=0, pady=4, sticky="nsew")
+        tk.Button(btns_final_container, text="PROCESAR TRANSACCIÓN (CONTADO)", bg="#27ae60", fg="white", command=lambda: confirmar_y_despachar_caja(es_credito=False), **estilo_final_btn).grid(row=0, column=0, pady=3, sticky="nsew")
+        tk.Button(btns_final_container, text="REGISTRAR COMO CRÉDITO PENDIENTE", bg="#34495e", fg="white", command=lambda: confirmar_y_despachar_caja(es_credito=True), **estilo_final_btn).grid(row=1, column=0, pady=3, sticky="nsew")
+        tk.Button(btns_final_container, text="CANCELAR ACCIÓN", bg="#c0392b", fg="white", command=win_modal.destroy, **estilo_final_btn).grid(row=2, column=0, pady=(8, 0), sticky="nsew")
 
-        btn_credito = tk.Button(
-            btns_final_container, text="REGISTRAR VENTA A CRÉDITO", bg="#34495e", fg="white", 
-            activebackground="#455a64", activeforeground="white", command=lambda: ejecutar_procesamiento(es_credito=True), **estilo_final_btn
-        )
-        btn_credito.grid(row=1, column=0, pady=4, sticky="nsew")
 
-        btn_cancelar = tk.Button(
-            btns_final_container, text="CANCELAR ACCIÓN", bg="#c0392b", fg="white", 
-            activebackground="#e74c3c", activeforeground="white", command=win_modal.destroy, **estilo_final_btn
-        )
-        btn_cancelar.grid(row=2, column=0, pady=(10, 0), sticky="nsew")
 
         
         
         
     def guardar_credito_final(self, cliente, ventana_principal, modo="contado"):
-        """Motor de guardado unificado con asignación jerárquica de tasa y trazabilidad por cedula."""
+        """Motor de guardado unificado que prioriza el sello de CANJE CON VALE puro en transacciones sin cobro neto."""
         if ventana_principal:
             ventana_principal.destroy() 
         
@@ -1429,22 +1498,20 @@ class ERPRepuestosApp:
             # --- EVALUACIÓN QUIRÚRGICA DE PRIORIDAD DE TASA ---
             try:
                 tasa_entrada = self.ent_tasa_cobro.get().strip() if hasattr(self, 'ent_tasa_cobro') else ""
-                if tasa_entrada and float(tasa_entrada) > 0:
-                    tasa_c = float(tasa_entrada) # Prioridad 1: Tasa de cobro específica de la venta
-                else:
-                    tasa_c = self.tasa_actual   # Prioridad 2: Tasa principal del inicio
+                tasa_c = float(tasa_entrada) if (tasa_entrada and float(tasa_entrada) > 0) else self.tasa_actual
             except (ValueError, TypeError):
-                tasa_c = self.tasa_actual       # Fallback de seguridad si digitan letras
+                tasa_c = self.tasa_actual
 
-            total_venta = 0.0
+            total_venta_bruto = 0.0
             costo_total_venta = 0.0
             resumen_productos = []
 
             # Recuperamos los metadatos congelados de la transacción desde ejecutar_procesamiento
             es_un_canje_activo = hasattr(self, 'vale_pago_activo') and self.vale_pago_activo is not None
-            costo_producto_viejo_devuelto = getattr(self, 'costo_vale_reingreso_activo', 0.00)
+            codigo_vale_utilizado = getattr(self, 'vale_pago_activo', None)
+            desc_vale = getattr(self, 'descuento_vale_activo', 0.0)
 
-                        # =====================================================================
+            # =====================================================================
             # CONTROL DE COSTOS REFACTORIZADO Y BLINDADO (GANANCIA EN POSITIVO)
             # =====================================================================
             for p in self.carrito:
@@ -1452,18 +1519,13 @@ class ERPRepuestosApp:
                 desc_u = p.get('descuento', 0.0)
                 subtotal_item = (p_ajustado - desc_u) * p['cantidad']
                 
-                total_venta += subtotal_item
+                total_venta_bruto += subtotal_item
                 
                 # --- SISTEMA DE CONTROL DE COSTOS DE AUDITORÍA CORPORATIVO ---
                 if p['codigo'] == "INFO-NC":
-                    # --- CORRECCIÓN QUIRÚRGICA: LEY DE SIGNOS ---
-                    # Para que la ganancia de hoy de la fila del canje dé en POSITIVO,
-                    # el costo del vale virtual debe ser exactamente igual a su precio negativo.
-                    # Esto equilibra la ecuación: Precio ($0.00) - Costo (-X) = +X Ganancia Real.
                     p_costo_ajustado = (p['precio'] * tasa_c) / self.tasa_actual
                     costo_total_venta += p_costo_ajustado * p['cantidad']
                 else:
-                    # Si es un producto físico normal (el nuevo), acumulamos su costo regular
                     costo_total_venta += p['costo'] * p['cantidad']
                 
                 detalle = f"[{p['codigo']}] {p['nombre']} x{p['cantidad']} (Ref: ${p_ajustado:.2f})"
@@ -1473,42 +1535,56 @@ class ERPRepuestosApp:
                 if p['codigo'] != "INFO-NC":
                     if p.get('es_combo'):
                         for cod_pieza, cant_en_combo in p['receta']:
-                            total_unidades_descontar = p['cantidad'] * cant_en_combo
-                            consulta("UPDATE repuestos SET cantidad = cantidad - ? WHERE codigo = ?", 
-                                    (total_unidades_descontar, cod_pieza), fetch=False)
+                            consulta("UPDATE repuestos SET cantidad = cantidad - ? WHERE codigo = ?", (p['cantidad'] * cant_en_combo, cod_pieza), fetch=False)
                     else:
-                        consulta("UPDATE repuestos SET cantidad = cantidad - ? WHERE codigo = ?", 
-                                (p['cantidad'], p['codigo']), fetch=False)
+                        consulta("UPDATE repuestos SET cantidad = cantidad - ? WHERE codigo = ?", (p['cantidad'], p['codigo']), fetch=False)
 
-            # --- REMOVEMOS CUALQUIER OTRA FÓRMULA DE OPERADORES ABAJO ---
-            if es_un_canje_activo:
-                # El costo total ya se calculó balanceado en el bucle superior
-                self.vale_pago_activo = None
-                self.monto_vale_aplicado = 0.00
-                self.costo_vale_reingreso_activo = 0.00
-
-
-            # Cálculo exacto en Bolívares usando la tasa consolidada arriba
-            total_bs = total_venta * tasa_c
             fecha_v = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            # --- NUEVA TRAZABILIDAD INTEGRAL POR CÉDULA DEL CLIENTE ---
+            # --- TRAZABILIDAD INTEGRAL POR CÉDULA DEL CLIENTE ---
             cedula_factura = self.ent_cedula_pos.get().strip().replace(".", "").replace("-", "").upper() if hasattr(self, 'ent_cedula_pos') else "GENERICO"
             if not cedula_factura: 
                 cedula_factura = "GENERICO"
 
-            # 2. INYECCIÓN DEL SELLO CON LA TASA Y LA CÉDULA DE IDENTIDAD
+            # --- RECUPERACIÓN DE FLUJOS MULTIMONEDA FRACCIONADOS ---
+            pago_usd = getattr(self, 'pago_repartido_usd', 0.0)
+            pago_bs = getattr(self, 'pago_repartido_bs', 0.0)
+
+            # --- CÁLCULO DEL TOTAL NETO REAL INGRESADO EN CAJA ---
+            total_venta_neto_caja = max(0.0, total_venta_bruto - desc_vale)
+
+            # Reset inmediato de variables de estado transitorias
+            if es_un_canje_activo:
+                self.vale_pago_activo = None
+                self.monto_vale_aplicado = 0.00
+                self.costo_vale_reingreso_activo = 0.00
+
+            # Cálculo exacto en Bolívares del total bruto de la orden
+            total_bs = total_venta_bruto * tasa_c
+
+            # =====================================================================
+            # 2. INYECCIÓN DEL SELLO CON PRIORIDAD ABSOLUTA EN VALES DE CANJE
+            # =====================================================================
             if modo == "credito":
                 metodo_auditoria = f"[MÉTODO: CRÉDITO PENDIENTE | CEDULA: {cedula_factura}]"
             else:
-                if hasattr(self, 'vale_pago_activo') and self.vale_pago_activo:
-                    metodo_auditoria = f"[MÉTODO: LIQUIDADO CON VALE CANJE {self.vale_pago_activo} | CEDULA: {cedula_factura}]"
-                    self.vale_pago_activo = None
+                # PRIORIDAD 1: Si la venta se liquidó usando un vale de devolución de forma parcial o total
+                if codigo_vale_utilizado:
+                    if total_venta_neto_caja <= 0.01:
+                        # Liquidado al 100% con el vale (Sin dinero de caja de por medio)
+                        metodo_auditoria = f"[MÉTODO: CANJE TOTAL CON VALE | VALE: {codigo_vale_utilizado} | CEDULA: {cedula_factura}]"
+                    else:
+                        # El vale cubrió una porción y el restante se pagó en caja mixta/moneda
+                        metodo_auditoria = f"[MÉTODO: CANJE PARCIAL | VALE COMPENSADO: -${desc_vale:.2f} | EFECTIVO USD: ${pago_usd:.2f} | Bs. DIGITAL: Bs. {pago_bs:.2f} | TASA REF: {tasa_c:.2f} | CEDULA: {cedula_factura}]"
+                
+                # PRIORIDAD 2: Ventas normales sin notas de crédito
+                elif pago_bs > 0 and pago_usd > 0:
+                    metodo_auditoria = f"[MÉTODO: MIXTO FRACCIONADO | EFECTIVO USD: ${pago_usd:.2f} | LIQUIDADO BOLÍVARES: Bs. {pago_bs:.2f} | TASA REF: {tasa_c:.2f} | CEDULA: {cedula_factura}]"
+                elif pago_bs > 0:
+                    metodo_auditoria = f"[MÉTODO: BOLÍVARES (Bs.) | TASA REF: {tasa_c:.2f} | CEDULA: {cedula_factura}]"
                 else:
-                    metodo_seleccionado = self.var_metodo_pago.get() if hasattr(self, 'var_metodo_pago') else "DÓLARES ($)"
-                    metodo_auditoria = f"[MÉTODO: {metodo_seleccionado} | TASA REF: {tasa_c:.2f} | CEDULA: {cedula_factura}]"
+                    metodo_auditoria = f"[MÉTODO: DÓLARES ($) | TASA REF: {tasa_c:.2f} | CEDULA: {cedula_factura}]"
 
-            # Concatenación en la columna flexible TEXT para auditoría retrocompatible
             lista_productos_con_pago = resumen_productos + [metodo_auditoria]
             productos_str_final = ", ".join(lista_productos_con_pago)
 
@@ -1519,23 +1595,32 @@ class ERPRepuestosApp:
                 consulta("""INSERT INTO cuentas_por_cobrar 
                             (cliente, fecha_deuda, detalle_productos, monto_total, costo_total, costo_pendiente) 
                             VALUES (?, ?, ?, ?, ?, ?)""", 
-                         (cliente.upper(), fecha_v, productos_str_final, total_venta, costo_total_venta, costo_total_venta), 
+                         (cliente.upper(), fecha_v, productos_str_final, total_venta_bruto, costo_total_venta, costo_total_venta), 
                          fetch=False, db_path=DB_CREDITOS)
                 messagebox.showinfo("Éxito", f"Crédito registrado para: {cliente.upper()}")
             else:
                 consulta("INSERT INTO ventas_log (fecha_hora, productos, total, costo_total) VALUES (?, ?, ?, ?)", 
-                        (fecha_v, productos_str_final, total_venta, costo_total_venta), 
+                        (fecha_v, productos_str_final, total_venta_neto_caja, costo_total_venta), 
                         fetch=False, db_path=DB_VENTAS)
                 
-                if "BOLÍVARES" in metodo_auditoria:
+                if codigo_vale_utilizado:
+                    messagebox.showinfo("Venta Procesada", f"Canje aplicado con éxito.\nNeto cobrado en caja: ${total_venta_neto_caja:.2f}\n(ID: {cedula_factura})")
+                elif pago_bs > 0 and pago_usd > 0:
+                    messagebox.showinfo("Venta Procesada", f"Venta mixta exitosa.\nRecibido: ${pago_usd:.2f} + Bs. {pago_bs:,.2f}\n(ID: {cedula_factura})")
+                elif pago_bs > 0:
                     messagebox.showinfo("Venta Procesada", f"Venta exitosa por Bs. {total_bs:,.2f}\n(A tasa de cobro: {tasa_c:.2f} Bs/USD | ID: {cedula_factura})")
                 else:
-                    messagebox.showinfo("Venta Procesada", f"Venta exitosa por ${total_venta:,.2f}\n(Asociada al ID: {cedula_factura})")
+                    messagebox.showinfo("Venta Procesada", f"Venta exitosa por ${total_venta_bruto:.2f}\n(Asociada al ID: {cedula_factura})")
 
             # 4. REINICIO AUTOMÁTICO DEL MÓDULO DE CLIENTES DEL POS
             if hasattr(self, 'ent_cedula_pos'):
                 self.ent_cedula_pos.delete(0, "end")
                 self.lbl_info_cliente_pos.config(text="[Cliente Genérico]", fg="#bdc3c7")
+
+            # Limpiar propiedades de la instancia
+            if hasattr(self, 'pago_repartido_usd'): del self.pago_repartido_usd
+            if hasattr(self, 'pago_repartido_bs'): del self.pago_repartido_bs
+            if hasattr(self, 'descuento_vale_activo'): self.descuento_vale_activo = 0.0
 
             # 5. LIMPIEZA Y ACTUALIZACIÓN EN CASCADA DE LAS REJILLAS VISUALES
             self.carrito = []
@@ -1544,7 +1629,6 @@ class ERPRepuestosApp:
             self.actualizar_estadisticas() 
             self.cargar_tabla_gestion()
             
-            # Refrescos asíncronos cruzados condicionales si las pantallas están en memoria
             if "finanzas" in self.frames: 
                 self.actualizar_tabla_finanzas()
             if "creditos" in self.frames: 
@@ -1552,6 +1636,9 @@ class ERPRepuestosApp:
 
         except Exception as e:
             messagebox.showerror("Error Crítico", f"No se pudo completar la operación: {e}")
+
+
+
 
 
 
@@ -1888,8 +1975,8 @@ class ERPRepuestosApp:
         # --- GRILLA DE MÓDULOS (LA MEJORA PRINCIPAL) ---
         grid_botones = tk.Frame(scroll_frame, bg="#f8f9fa", pady=30)
         grid_botones.pack(expand=True)
-        for i in range(3):
-            grid_botones.columnconfigure(i, weight=1)
+        for i in range(4):
+            grid_botones.columnconfigure(i, weight=1, minsize=220)
 
         # Estilo para los botones tipo "Tile" (Mosaico)
         def crear_tile(row, col, texto, subtexto, icono, color, comando):
@@ -1901,14 +1988,14 @@ class ERPRepuestosApp:
             btn_frame.pack_propagate(False) 
             
             # 2. Creamos los elementos internos
-            lbl_ico = tk.Label(btn_frame, text=icono, font=("Segoe UI", 24), bg="white", fg=color, cursor="hand2")
-            lbl_ico.pack(pady=(15, 5))
+            lbl_ico = tk.Label(btn_frame, text=icono, font=("Segoe UI", 22), bg="white", fg=color, cursor="hand2")
+            lbl_ico.pack(pady=(12, 4))
             
-            lbl_tit = tk.Label(btn_frame, text=texto, font=("Segoe UI", 11, "bold"), bg="white", fg="#2c3e50", cursor="hand2")
+            lbl_tit = tk.Label(btn_frame, text=texto, font=("Segoe UI", 10, "bold"), bg="white", fg="#2c3e50", cursor="hand2")
             lbl_tit.pack()
             
             lbl_sub = tk.Label(btn_frame, text=subtexto, font=("Segoe UI", 8), bg="white", fg="#95a5a6", cursor="hand2")
-            lbl_sub.pack(pady=(0, 15))
+            lbl_sub.pack(pady=(0, 12))
 
             widgets_del_boton = [btn_frame, lbl_ico, lbl_tit, lbl_sub]
 
@@ -1938,17 +2025,17 @@ class ERPRepuestosApp:
                    lambda: self.mostrar_pantalla("finanzas", direccion="right"))
 
         # Fila 2
-        crear_tile(1, 0, "GESTIONAR STOCK", "Editar y eliminar repuestos", "📦", "#e67e22", 
+        crear_tile(0, 3, "GESTIONAR STOCK", "Editar y eliminar repuestos", "📦", "#e67e22", 
                    lambda: self.mostrar_pantalla("gestion", direccion="right"))
         
-        crear_tile(1, 1, "REGISTRAR PRODUCTO", "Añadir nuevas piezas", "📝", "#1abc9c", 
+        crear_tile(1, 0, "REGISTRAR PRODUCTO", "Añadir nuevas piezas", "📝", "#1abc9c", 
                    lambda: self.mostrar_pantalla("registro", direccion="right"))
         
-        crear_tile(1, 2, "REPORTES CRÍTICOS", "Análisis de stock bajo", "📊", "#e74c3c", 
+        crear_tile(1, 1, "REPORTES CRÍTICOS", "Análisis de stock bajo", "📊", "#e74c3c", 
                    lambda: self.mostrar_pantalla("reporte", direccion="right"))
-        crear_tile(2, 1, "VALES DE CANJE", "Ver notas de crédito vigentes", "🎟️", "#9b59b6", 
+        crear_tile(1, 2, "VALES DE CANJE", "Ver notas de crédito vigentes", "🎟️", "#9b59b6", 
                    lambda: self.abrir_visor_vales_canje())
-        crear_tile(2, 2, "GESTIONAR CLIENTES", "Auditar, editar y borrar deudores", "👥", "#2980b9", 
+        crear_tile(1, 3, "GESTIONAR CLIENTES", "Auditar, editar y borrar deudores", "👥", "#2980b9", 
                    lambda: self.mostrar_pantalla("clientes", direccion="right"))
         
         # Sincronizamos los anclajes de las columnas del grid en el bucle del menú principal
@@ -2940,7 +3027,7 @@ class ERPRepuestosApp:
         
 
     def actualizar_tabla_finanzas(self):
-        """Lógica avanzada que preserva los tags de productos, aplica colores por canje y busca por CEDULA."""
+        """Lógica avanzada de auditoría contable. Reconstruye utilidades reales de piezas nuevas en canjes menores."""
         for row in self.tree_finanzas.get_children():
             self.tree_finanzas.delete(row)
             
@@ -2948,7 +3035,6 @@ class ERPRepuestosApp:
         valor = self.var_valor.get()
         busqueda = self.ent_buscar_factura.get().strip()
         
-        # 1. Traemos el costo_total guardado en la transacción original
         query = "SELECT id, date(fecha_hora), productos, total, costo_total FROM ventas_log WHERE 1=1"
         params = []
 
@@ -2957,34 +3043,23 @@ class ERPRepuestosApp:
             query += f" AND strftime('{formatos[escala]}', fecha_hora) = ?"
             params.append(valor)
 
-        # --- MOTOR DE BÚSQUEDA MULTICRITERIO SEGURO (ID, PRODUCTO O CÉDULA) ---
         if busqueda:
-            # Saneamos rigurosamente la entrada para auditorías de cédulas directas
             busqueda_limpia = busqueda.replace(".", "").replace("-", "").upper()
-            # Filtramos solo caracteres numéricos por si el cajero digita "V-20123456" o "v20123456"
             solo_numeros_cedula = "".join([char for char in busqueda_limpia if char.isdigit()])
-            
             id_buscado = busqueda.replace("FACT-", "").replace("fact-", "").lstrip('0')
             
-            # Criterio A: Si es un número corto (4 o menos dígitos), se procesa como ID de factura
             if id_buscado.isdigit() and len(id_buscado) <= 4:
                 query += " AND id = ?"
                 params.append(int(id_buscado))
-                
-            # Criterio B: Si posee 5 o más dígitos puros, el motor asume de forma estricta que es la CÉDULA
             elif len(solo_numeros_cedula) >= 5:
                 query += " AND productos LIKE ?"
-                # Escanea el sello inyectado dinámicamente al final de la columna flexible 'productos'
                 params.append(f"%CEDULA: {solo_numeros_cedula}%")
-                
-            # Criterio C: Si es texto alfabético plano, ejecuta la coincidencia regular de repuestos
             else:
                 query += " AND productos LIKE ?"
                 params.append(f"%{busqueda}%")
 
         ventas = consulta(query + " ORDER BY id DESC", params, db_path=DB_VENTAS)
 
-        # Configurar colores de realce corporativo en el Treeview
         self.tree_finanzas.tag_configure("factura_canje", background="#e8f4fd", foreground="#1e3d59")
 
         total_general_usd = 0.0
@@ -3000,23 +3075,90 @@ class ERPRepuestosApp:
             costo_registrado = v[4] if v[4] is not None else 0.0
             
             num_factura = f"FACT-{str(id_venta).zfill(5)}"
-            ganancia_v = round(monto_v - costo_registrado, 2)
 
-            # Escaneo analítico de moneda de recepción
-            if "BOLÍVARES" in detalle_v:
+            # =====================================================================
+            # 💎 EVALUADOR POR SUB-DESGLOSE FÍSICO DE COMPONENTES NUEVOS
+            # =====================================================================
+            if "[ANULACIÓN DE UTILIDAD]" in detalle_v:
+                # El contra-asiento resta de forma limpia la utilidad de la pieza devuelta del reporte neta
+                ganancia_v = round(monto_v - costo_registrado, 2)
+            elif "[EGRESO DEVOLUCIÓN EFECTIVO]" in detalle_v:
+                # Los asientos de vuelto físico en caja no generan costos ni ganancias comerciales
+                ganancia_v = 0.00
+            elif "CANJE" in detalle_v or "VALE" in detalle_v or "NC-" in detalle_v:
                 try:
-                    tasa_str = detalle_v.split("TASA REF: ")[1].split("]")[0]
-                    tasa_transaccion = float(tasa_str)
-                except:
-                    tasa_transaccion = self.tasa_actual
-                caja_digital_bs += (monto_v * tasa_transaccion)
-                tipo_pago_tag = "Bs."
-            else:
-                caja_efectivo_usd += monto_v
-                tipo_pago_tag = "$"
+                    utilidad_acumulada_piezas_nuevas = 0.0
+                    partes_glosa = detalle_v.split(", ")
+                    
+                    for parte in partes_glosa:
+                        # Escaneamos de forma estricta piezas físicas normales ignorando items de balance
+                        if "[" in parte and "]" in parte and "x" in parte and "INFO-NC" not in parte and "MÉTODO" not in parte:
+                            # 1. Extraer código del repuesto entre corchetes
+                            cod_p = parte[parte.find("[")+1 : parte.find("]")]
+                            
+                            # 2. Extraer cantidad despachada
+                            parte_despues_x = parte.split(" x")
+                            cant_p = int(parte_despues_x[1].split(" ")[0]) if len(parte_despues_x) > 1 else 1
+                            
+                            # 3. Extraer precio de venta asignado en vitrina
+                            if "Ref: $" in parte:
+                                precio_v_str = parte.split("Ref: $")[1].replace("]", "").replace(")", "").strip()
+                                precio_v_real = float(precio_v_str)
+                            else:
+                                precio_v_real = 0.0
 
-            # --- CONSERVACIÓN CRÍTICA DE METADATOS Y TAGS DE COLOR ---
-            if "CANJE" in detalle_v or "NC-" in detalle_v:
+                            # Consultar el costo unitario base en el almacén de repuestos
+                            res_costo = consulta("SELECT precio_costo FROM repuestos WHERE codigo=?", (cod_p,), db_path=DB_NAME)
+                            costo_u_real = float(res_costo[0][0]) if res_costo and res_costo[0][0] is not None else (precio_v_real * 0.70)
+                            
+                            # Utilidad Neta Real = (Precio Venta Vitrina - Costo real) * Cantidad
+                            utilidad_acumulada_piezas_nuevas += (precio_v_real - costo_u_real) * cant_p
+                    
+                    ganancia_v = round(utilidad_acumulada_piezas_nuevas, 2)
+                except Exception as err:
+                    print(f"DEBUG RECALCULO: {err}")
+                    ganancia_v = round(monto_v - costo_registrado, 2)
+            else:
+                # Facturas ordinarias regulares de venta directa
+                ganancia_v = round(monto_v - costo_registrado, 2)
+
+            # --- MOTOR DE DESGLOSE DE CAJAS MIXTAS FRACCIONADAS ---
+            if "MIXTO FRACCIONADO" in detalle_v or "CANJE PARCIAL" in detalle_v or "[MÉTODO: MIXTO" in detalle_v or "VALE COMPENSADO:" in detalle_v:
+                try:
+                    usd_str = detalle_v.split("EFECTIVO USD: $")[1].split(" |")[0].strip()
+                    monto_usd_real = float(usd_str)
+                    
+                    if "LIQUIDADO BOLÍVARES: Bs. " in detalle_v:
+                        bs_str = detalle_v.split("LIQUIDADO BOLÍVARES: Bs. ")[1].split(" |")[0].strip()
+                    else:
+                        bs_str = detalle_v.split("Bs. DIGITAL: Bs. ")[1].split(" |")[0].strip()
+                    monto_bs_real = float(bs_str)
+                except:
+                    monto_usd_real = monto_v
+                    monto_bs_real = 0.0
+
+                caja_efectivo_usd += monto_usd_real
+                caja_digital_bs += monto_bs_real
+                tipo_pago_tag = "MIXTO"
+            else:
+                # Flujo regular de caja monomonedas
+                if "BOLÍVARES" in detalle_v or "MÉTODO: BOLÍVARES" in detalle_v:
+                    try:
+                        tasa_str = detalle_v.split("TASA REF: ")[1].split("]")[0].strip()
+                        tasa_transaccion = float(tasa_str)
+                    except:
+                        tasa_transaccion = self.tasa_actual
+                    caja_digital_bs += (monto_v * tasa_transaccion)
+                    tipo_pago_tag = "Bs."
+                else:
+                    if "[ANULACIÓN DE UTILIDAD]" in detalle_v or "[EGRESO DEVOLUCIÓN EFECTIVO]" in detalle_v:
+                        caja_efectivo_usd += 0.00 
+                    else:
+                        caja_efectivo_usd += monto_v
+                    tipo_pago_tag = "$"
+
+            # Marcado estético unificado de la grilla
+            if "CANJE" in detalle_v or "NC-" in detalle_v or "[ANULACIÓN DE UTILIDAD]" in detalle_v or "[EGRESO DEVOLUCIÓN EFECTIVO]" in detalle_v:
                 num_factura_con_moneda = f"{num_factura} ({tipo_pago_tag}) [CANJE]"
                 tags_estructurados = (detalle_v, "factura_canje")
             else:
@@ -3034,11 +3176,18 @@ class ERPRepuestosApp:
                 f"${ganancia_v:.2f}"
             ), tags=tags_estructurados)
 
-        # Actualización de la barra de KPIs e información de caja inferior
+        # Refrescar la barra de KPIs inferiores con formato de millares
         if hasattr(self, 'lbl_ingreso_bruto'): self.lbl_ingreso_bruto.config(text=f"Total General: ${total_general_usd:,.2f}")
-        if hasattr(self, 'lbl_caja_usd'): self.lbl_caja_usd.config(text=f"Caja USD: ${caja_efectivo_usd:,.2f}")
+        if hasattr(self, 'lbl_caja_usd'): self.lbl_caja_usd.config(text=f"Caja USD: ${max(0.0, caja_efectivo_usd):,.2f}")
         if hasattr(self, 'lbl_caja_bs'): self.lbl_caja_bs.config(text=f"Caja Bs.: Bs. {caja_digital_bs:,.2f}")
         if hasattr(self, 'lbl_ingreso_neto'): self.lbl_ingreso_neto.config(text=f"Ganancia Neta: ${ganancia_neta_global:,.2f}")
+
+
+
+
+
+
+
 
 
 
