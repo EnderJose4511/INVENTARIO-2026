@@ -174,7 +174,7 @@ class ERPRepuestosApp:
         
         self.ent_tasa_cobro.insert(0, str(self.tasa_actual)) 
 
-        self.ent_tasa_cobro.bind("<KeyRelease>", lambda e: self.actualizar_tabla_pos())
+        self.ent_tasa_cobro.bind("<KeyRelease>", lambda e: self.disparar_buscador_con_debounce())
 
 
         tk.Label(top_bar, text="🛒 PUNTO DE VENTA", font=("Segoe UI", 14, "bold"), fg="white", bg="#2c3e50").pack(side="left", padx=20)
@@ -315,50 +315,83 @@ class ERPRepuestosApp:
         # INYECCIÓN DE ALTA FIDELIDAD: MÓDULO CÉDULA PREMIUM CORREGIDO
         # =====================================================================
         # Usamos un relieve plano integrado al fondo azul noche original
-        cedula_container = tk.Frame(panel_der, bg="#2c3e50")
-        cedula_container.grid(row=3, column=0, padx=25, pady=15, sticky="ew")
-        
-        # Sub-rejilla interna para garantizar la simetría absoluta de los textos
-        cedula_container.columnconfigure(0, weight=1)
+                # =====================================================================
+        # 🪪 CONTENEDOR DE IDENTIFICACIÓN DEL CLIENTE (REFACTORIZADO)
+        # =====================================================================
+                # =====================================================================
+        # 🪪 CONTENEDOR DE IDENTIFICACIÓN CON MATRIZ ALINEADA (ANTI-DESPLAZAMIENTO)
+        # =====================================================================
+        cliente_frame = tk.Frame(top_bar, bg="#2c3e50")
+        cliente_frame.pack(side="left", padx=25, pady=2)
 
-        # Capa A: Etiqueta estilizada en Gris Plata (CORREGIDO: Sin sticky="center")
+        # Título superior del bloque
         tk.Label(
-            cedula_container, 
-            text="IDENTIFICACIÓN DEL CLIENTE (CÉDULA)", 
-            font=("Segoe UI", 8, "bold"), 
-            fg="#95a5a6", # Gris plata elegante de tu paleta
+            cliente_frame, 
+            text="IDENTIFICACIÓN DEL CLIENTE (CÉDULA):", 
+            font=("Segoe UI", 9, "bold"), 
+            fg="#bdc3c7", 
             bg="#2c3e50"
-        ).grid(row=0, column=0, pady=(2, 6)) # Al quitar sticky, Tkinter lo centra automáticamente
-        
-        # Capa B: Entrada de texto Premium (Fondo oscuro suavizado, sin bordes 3D nativos)
+        ).pack(anchor="w", pady=(0, 2))
+
+        # Rejilla interna para forzar alineación horizontal perfecta al mismo nivel
+        grid_fila = tk.Frame(cliente_frame, bg="#2c3e50")
+        grid_fila.pack(anchor="w")
+
+        # 1. Caja de texto para ingresar el documento
         self.ent_cedula_pos = tk.Entry(
-            cedula_container, 
-            font=("Consolas", 14, "bold"), # Tipografía ideal para números nítidos
+            grid_fila, 
+            font=("Segoe UI", 11, "bold"), 
             width=16, 
             justify="center", 
-            bg="#34495e", # Tono bícromo que contrasta con el fondo base
-            fg="#ffffff", # Texto blanco puro de alta visibilidad
+            bg="white", 
+            fg="#2c3e50",
+            relief="flat",
+            highlightthickness=1,
+            highlightbackground="#bdc3c7"
+        )
+        # Fijado estricto en la columna 0
+        self.ent_cedula_pos.grid(row=0, column=0, sticky="w")
+
+        # Rutina de limpieza manual en RAM
+        def resetear_cliente_pos_manual():
+            self.ent_cedula_pos.config(state="normal")
+            self.ent_cedula_pos.delete(0, "end")
+            self.lbl_info_cliente_pos.config(text="👤 [ESPERANDO DOCUMENTO...]", fg="#f39c12")
+            self.ent_cedula_pos.focus_set()
+
+        # 2. Botón pequeño de vaciado rápido
+        btn_reset_cli = tk.Button(
+            grid_fila,
+            text=" ❌ ",
+            font=("Segoe UI", 8, "bold"),
+            bg="#e74c3c",
+            fg="white",
+            activebackground="#c0392b",
+            activeforeground="white",
             relief="flat",
             bd=0,
-            highlightthickness=1,
-            highlightbackground="#455a64", # Borde sutil inactivo
-            highlightcolor="#1abc9c",       # El borde se ilumina en verde turquesa al escribir
-            insertbackground="#ffffff"      # Cursor de escritura blanco
+            padx=4,
+            pady=1,
+            cursor="hand2",
+            command=resetear_cliente_pos_manual
         )
-        self.ent_cedula_pos.grid(row=1, column=0, pady=4)
-        
-        # Capa C: Respuesta dinámica del ERP (CORREGIDO: Sin sticky="center")
+        # Fijado estricto al lado de la casilla (columna 1) con colchón de separación
+        btn_reset_cli.grid(row=0, column=1, padx=6, sticky="w")
+
+        # 3. Etiqueta dinámica de respuesta inferior
         self.lbl_info_cliente_pos = tk.Label(
-            cedula_container, 
-            text="[Cliente Genérico]", 
-            font=("Segoe UI", 9, "bold", "italic"), 
-            fg="#2ecc71", # Verde esmeralda translúcido
+            cliente_frame, 
+            text="👤 [ESPERANDO DOCUMENTO...]", 
+            font=("Segoe UI", 10, "bold"), 
+            fg="#f39c12",  
             bg="#2c3e50"
         )
-        self.lbl_info_cliente_pos.grid(row=2, column=0, pady=(4, 2))
+        self.lbl_info_cliente_pos.pack(anchor="w", pady=(2, 0))
 
-        # Mapeo del canal original de consulta al presionar Enter
+        # Enlace del gatillo del teclado para validaciones rápidas
         self.ent_cedula_pos.bind("<Return>", lambda e: self.verificar_o_registrar_cliente_pos())
+
+
 
 
         # 5. --- BOTONERA DE ACCIONES INTERNAS (FIJADA ABAJO EN EL ROW 4) ---
@@ -628,24 +661,28 @@ class ERPRepuestosApp:
 
 
     def filtrar_productos_pos(self, categoria=None):
-        # 1. Limpiar grid visual y configurar columnas
+        """
+        Versión de Ultra-Rendimiento con Limpieza Pura.
+        Optimiza las consultas a disco y limita los elementos en pantalla para eliminar el lag.
+        """
+        # 1. Limpieza total y seteo del fondo de lienzo de contraste
         for widget in self.grid_productos.winfo_children():
             widget.destroy()
+        
+        self.grid_productos.config(bg="#f5f7f8")
 
+        # Configuración fija de las 5 columnas simétricas de tu imagen
         for i in range(5):
             self.grid_productos.grid_columnconfigure(i, weight=1, minsize=175)
         
         self.categoria_actual = categoria
         busqueda = self.ent_buscar_pos.get().strip()
 
-        # 2. MODO CATEGORÍAS (Si no hay búsqueda ni categoría seleccionada)
-                # 2. MODO CATEGORÍAS (Si no hay búsqueda ni categoría seleccionada)
-                # 2. MODO CATEGORÍAS (Rompiendo el exceso de blanco con contraste estructural)
+        # =====================================================================
+        # 📂 MODO A: MENU BASE DE CATEGORÍAS (Marcas y Botón de Combos)
+        # =====================================================================
         if not busqueda and not categoria:
-            # CLAVE: Cambiamos el fondo del grid principal a un gris sutil para generar contraste
-            self.grid_productos.config(bg="#f5f7f8")
-            
-            # --- TARJETA DE COMBOS Y PROMOCIONES (EDICIÓN PREMIUM) ---
+            # --- TARJETA DE COMBOS Y PROMOCIONES ---
             card_combo = tk.Frame(
                 self.grid_productos, bg="white", highlightthickness=1, highlightbackground="#dcdde1",
                 width=175, height=185
@@ -653,15 +690,13 @@ class ERPRepuestosApp:
             card_combo.grid(row=0, column=0, padx=8, pady=8, sticky="nsew")
             card_combo.pack_propagate(False)
 
-            # Encabezado oscuro texturizado para el Icono (Rompe el blanco)
-            head_combo = tk.Frame(card_combo, bg="#ffeaa7", height=85) # Tono dorado pastel de base
+            head_combo = tk.Frame(card_combo, bg="#ffeaa7", height=85)
             head_combo.pack(fill="x", side="top")
             head_combo.pack_propagate(False)
 
             lbl_ico_combo = tk.Label(head_combo, text="🎁", font=("Segoe UI", 28), bg="#ffeaa7", fg="#d4ac0d")
             lbl_ico_combo.pack(expand=True)
 
-            # Cuerpo inferior blanco para el texto limpio
             body_combo = tk.Frame(card_combo, bg="white")
             body_combo.pack(fill="both", expand=True)
 
@@ -671,22 +706,15 @@ class ERPRepuestosApp:
             )
             lbl_txt_combo.pack(expand=True)
 
-            # Eventos Hover y Clic vinculados en cascada para Combos
             widgets_combo = [card_combo, head_combo, lbl_ico_combo, body_combo, lbl_txt_combo]
             for w in widgets_combo:
                 w.config(cursor="hand2")
                 w.bind("<Button-1>", lambda e: self.mostrar_combos_en_pos())
-                w.bind("<Enter>", lambda e, cp=card_combo, hc=head_combo, li=lbl_ico_combo: [
-                    cp.config(highlightbackground="#f1c40f", bg="#fdfaf2"),
-                    hc.config(bg="#f1c40f"), li.config(bg="#f1c40f", fg="white")
-                ])
-                w.bind("<Leave>", lambda e, cp=card_combo, hc=head_combo, li=lbl_ico_combo: [
-                    cp.config(highlightbackground="#dcdde1", bg="white"),
-                    hc.config(bg="#ffeaa7"), li.config(bg="#ffeaa7", fg="#d4ac0d")
-                ])
+                w.bind("<Enter>", lambda e: card_combo.config(highlightbackground="#f1c40f", bg="#fdfaf2"))
+                w.bind("<Leave>", lambda e: card_combo.config(highlightbackground="#dcdde1", bg="white"))
+                
 
-
-            # --- CARGA Y RENDERIZADO DE MARCAS (CATEGORÍAS DE ALTO CONTRASTE) ---
+            # --- CARGA Y RENDERIZADO DE MARCAS ---
             query = "SELECT DISTINCT marca FROM repuestos ORDER BY marca"
             categorias = consulta(query)
             
@@ -698,7 +726,6 @@ class ERPRepuestosApp:
                 card_cat.grid(row=i//5, column=i%5, padx=8, pady=8, sticky="nsew")
                 card_cat.pack_propagate(False)
 
-                # Encabezado Azul Corporativo Oscuro (Corta la monotonía visual)
                 head_cat = tk.Frame(card_cat, bg="#2c3e50", height=85)
                 head_cat.pack(fill="x", side="top")
                 head_cat.pack_propagate(False)
@@ -706,7 +733,6 @@ class ERPRepuestosApp:
                 lbl_ico_cat = tk.Label(head_cat, text="📂", font=("Segoe UI", 26), bg="#2c3e50", fg="#bdc3c7")
                 lbl_ico_cat.pack(expand=True)
 
-                # Cuerpo inferior blanco para legibilidad tipográfica pura
                 body_cat = tk.Frame(card_cat, bg="white")
                 body_cat.pack(fill="both", expand=True)
 
@@ -716,94 +742,65 @@ class ERPRepuestosApp:
                 )
                 lbl_txt_cat.pack(expand=True)
 
-                # --- CONGELAMIENTO SEGURO DE VARIABLES Y EFECTOS EN BLOQUE ---
                 widgets_cat = [card_cat, head_cat, lbl_ico_cat, body_cat, lbl_txt_cat]
                 cmd_cat = lambda e, c_actual=cat: self.filtrar_productos_pos(categoria=c_actual)
 
                 for w in widgets_cat:
                     w.config(cursor="hand2")
                     w.bind("<Button-1>", cmd_cat)
+                    w.bind("<Enter>", lambda e, cc=card_cat: cc.config(highlightbackground="#3498db", bg="#f4f9fc"))
+                    w.bind("<Leave>", lambda e, cc=card_cat: cc.config(highlightbackground="#dcdde1", bg="white"))
                     
-                    # Al pasar el ratón, la cabecera se ilumina con el azul brillante moderno
-                    w.bind("<Enter>", lambda e, cp=card_cat, hc=head_cat, li=lbl_ico_cat: [
-                        cp.config(highlightbackground="#3498db", bg="#f4f9fc"),
-                        hc.config(bg="#3498db"), li.config(bg="#3498db", fg="white")
-                    ])
-                    w.bind("<Leave>", lambda e, cp=card_cat, hc=head_cat, li=lbl_ico_cat: [
-                        cp.config(highlightbackground="#dcdde1", bg="white"),
-                        hc.config(bg="#2c3e50"), li.config(bg="#2c3e50", fg="#bdc3c7")
-                    ])
 
-                    self.grid_productos.after(10, lambda: [
-                self.grid_productos.master.configure(scrollregion=self.grid_productos.master.bbox("all"), bg="#f5f7f8")
-            ])
+            self.grid_productos.after(10, lambda: self.grid_productos.master.configure(scrollregion=self.grid_productos.master.bbox("all"), bg="#f5f7f8"))
             return
-            
-            # Sincronización del área deslizable
-                    # =====================================================================
-        # 🚀 SOLUCIÓN ENCADENADA CONTRA EL ERROR DE PRIMERA CARGA
+
         # =====================================================================
-        def forzar_actualizacion_geometria():
-            try:
-                # 1. Obligamos al contenedor de los productos a medir sus tarjetas reales
-                self.grid_productos.update_idletasks()
-                
-                # 2. Buscamos el Canvas y le ordenamos reajustar su área deslizable
-                canvas_pos = self.grid_productos.master
-                canvas_pos.configure(scrollregion=canvas_pos.bbox("all"), bg="#f5f7f8")
-            except:
-                pass
-
-        # Ejecutamos el primer refresco a los 10ms (elimina el colapso al entrar)
-        self.grid_productos.after(10, forzar_actualizacion_geometria)
-        
-        # Ejecutamos un segundo refresco de refuerzo a los 80ms (asegura el ancho real)
-        self.grid_productos.after(80, forzar_actualizacion_geometria)
-
-  
-
-        # 3. MODO PRODUCTOS (Búsqueda Multicriterio)
+        # 🧠 MODO B: MOTOR DE BÚSQUEDA INTELIGENTE CRUZADA POR TOKENS
+        # =====================================================================
         if busqueda:
-            query = """SELECT codigo, nombre, modelo, precio_venta, cantidad, marca 
+            palabras = [p for p in busqueda.split(" ") if p]
+            condiciones = []
+            lista_params = []
+            
+            for p in palabras:
+                condiciones.append("(nombre LIKE ? OR modelo LIKE ? OR marca LIKE ?)")
+                lista_params.extend([f"%{p}%", f"%{p}%", f"%{p}%"])
+            
+            # OPTIMIZACIÓN 1: El precio_costo se trae aquí, eliminando subconsultas lentas en el bucle
+            # OPTIMIZACIÓN 2: Límite estricto de 25 elementos para evitar saturar la memoria gráfica de Tkinter
+            query = f"""SELECT codigo, nombre, modelo, precio_venta, cantidad, marca, precio_costo 
                        FROM repuestos 
-                       WHERE nombre LIKE ? OR codigo LIKE ? OR modelo LIKE ? 
-                       ORDER BY nombre LIMIT 50"""
-            params = (f'%{busqueda}%', f'%{busqueda}%', f'%{busqueda}%')
+                       WHERE {" AND ".join(condiciones)} 
+                       ORDER BY nombre LIMIT 25"""
+            params = tuple(lista_params)
+            inicio_index = 0
         else:
-            query = """SELECT codigo, nombre, modelo, precio_venta, cantidad, marca 
+            query = """SELECT codigo, nombre, modelo, precio_venta, cantidad, marca, precio_costo 
                        FROM repuestos 
                        WHERE marca = ? 
-                       ORDER BY nombre"""
+                       ORDER BY nombre LIMIT 25"""
             params = (categoria,)
+            inicio_index = 1
 
         productos = consulta(query, params)
 
-        # 4. BOTÓN VOLVER
+        # --- BOTÓN VOLVER ---
         if not busqueda:
-            # Contenedor Base con las dimensiones simétricas del mosaico corporativo
             btn_volver_frame = tk.Frame(
                 self.grid_productos, bg="white", highlightthickness=1, highlightbackground="#dcdde1",
                 width=175, height=185
             )
             btn_volver_frame.grid(row=0, column=0, padx=8, pady=8, sticky="nsew")
             btn_volver_frame.pack_propagate(False)
-            btn_volver_frame.grid_propagate(False)
 
-            # Encabezado Gris Sólido para encapsular la flecha (Corta el exceso de blanco)
-            head_volver = tk.Frame(btn_volver_frame, bg="#8a99a6", height=85) # Color gris balanceado de tu imagen
+            head_volver = tk.Frame(btn_volver_frame, bg="#8a99a6", height=85)
             head_volver.pack(fill="x", side="top")
             head_volver.pack_propagate(False)
 
-            # Icono encapsulado con recuadro sutil integrado
-            lbl_ico_back = tk.Label(
-                head_volver, text=" 💡 ", font=("Segoe UI", 12), bg="#8a99a6", fg="white",
-                highlightthickness=1, highlightbackground="#abb7b7", padx=8, pady=4
-            )
-            # Nota: Si prefieres usar caracteres de flecha pura por compatibilidad de fuentes:
-            lbl_ico_back.config(text=" ← ", font=("Segoe UI", 14, "bold"))
+            lbl_ico_back = tk.Label(head_volver, text=" ← ", font=("Segoe UI", 14, "bold"), bg="#8a99a6", fg="white")
             lbl_ico_back.pack(expand=True)
 
-            # Cuerpo inferior blanco para el texto jerárquico
             body_volver = tk.Frame(btn_volver_frame, bg="white")
             body_volver.pack(fill="both", expand=True)
 
@@ -813,123 +810,139 @@ class ERPRepuestosApp:
             )
             lbl_txt_back.pack(expand=True)
 
-            # --- VINCULACIÓN DE EVENTOS EN CASCADA CON EFECTO HOVER ---
             widgets_volver = [btn_volver_frame, head_volver, lbl_ico_back, body_volver, lbl_txt_back]
             for w in widgets_volver:
                 w.config(cursor="hand2")
-                w.bind("<Button-1>", lambda e: self.filtrar_productos_pos()) # Clic regresa al menú de marcas
+                w.bind("<Button-1>", lambda e: self.filtrar_productos_pos())
+                w.bind("<Enter>", lambda e: btn_volver_frame.config(highlightbackground="#3498db", bg="#f4f9fc"))
+                w.bind("<Leave>", lambda e: btn_volver_frame.config(highlightbackground="#dcdde1", bg="white"))
                 
-                # Efecto interactivo: se ilumina con el azul del sistema al pasar el mouse
-                w.bind("<Enter>", lambda e, cp=btn_volver_frame, hv=head_volver: [
-                    cp.config(highlightbackground="#3498db", bg="#f4f9fc"),
-                    hv.config(bg="#3498db")
-                ])
-                w.bind("<Leave>", lambda e, cp=btn_volver_frame, hv=head_volver: [
-                    cp.config(highlightbackground="#dcdde1", bg="white"),
-                    hv.config(bg="#8a99a6")
-                ])
-                
-            inicio_index = 1
-        else:
-            inicio_index = 0
 
-        # 5. RENDERIZADO DE PRODUCTOS (Respetando el inicio_index)
-                # 5. RENDERIZADO DE PRODUCTOS PROFESIONAL (Tarjetas Estilizadas)
-        for i, (cod, nom, mod, pre, cant, mar) in enumerate(productos, start=inicio_index):
-            # --- PALETA DE COLORES CORPORATIVA PARA BADGES DE STOCK ---
+        # =====================================================================
+        # 🎨 RENDERIZADO DE TARJETAS DE REPUESTOS
+        # =====================================================================
+        for i, (cod, nom, mod, pre, cant, mar, p_costo) in enumerate(productos, start=inicio_index):
             if int(cant) <= 0: 
-                bg_badge, fg_badge = "#f8d7da", "#721c24"  # Rojo sutil (Agotado)
+                bg_badge, fg_badge = "#f8d7da", "#721c24"
                 estado_txt = "AGOTADO"
             elif int(cant) <= 5: 
-                bg_badge, fg_badge = "#fff3cd", "#856404"  # Naranja sutil (Crítico)
+                bg_badge, fg_badge = "#fff3cd", "#856404"
                 estado_txt = f"STOCK CRÍTICO: {cant}"
             else: 
-                bg_badge, fg_badge = "#d4edda", "#155724"  # Verde sutil (Disponible)
+                bg_badge, fg_badge = "#d4edda", "#155724"
                 estado_txt = f"DISPONIBLE: {cant}"
 
-            # Contenedor Base de la Tarjeta con Dimensiones Corporativas Fijas
             card_prod = tk.Frame(
-                self.grid_productos, 
-                bg="white", 
-                highlightthickness=1, 
-                highlightbackground="#dcdde1",
-                padx=12, 
-                pady=12,
-                width=175,   # Fija el ancho exacto para simetría de 5 columnas
-                height=185   # Altura perfecta para evitar saltos y superposiciones
+                self.grid_productos, bg="white", highlightthickness=1, highlightbackground="#dcdde1",
+                padx=12, pady=12, width=175, height=185
             )
             card_prod.grid(row=i//5, column=i%5, padx=8, pady=8, sticky="nsew")
-            
-            # Forzado estricto de geometría (Evita que el texto decolore o estire el mosaico)
             card_prod.pack_propagate(False)
             card_prod.grid_propagate(False)
 
-            # Capa 1: Nombre de la Pieza (Negrita corporativa)
             lbl_nom = tk.Label(
                 card_prod, text=nom.upper(), font=("Segoe UI", 9, "bold"), 
                 fg="#2c3e50", bg="white", wraplength=145, justify="center"
             )
             lbl_nom.pack(fill="x", pady=(2, 2))
 
-            # Capa 2: Compatibilidad (Texto secundario minimalista)
             lbl_comp = tk.Label(
                 card_prod, text=f"{mar}  •  {mod}", font=("Segoe UI", 8), 
                 fg="#7f8c8d", bg="white", wraplength=145, justify="center"
             )
             lbl_comp.pack(fill="x")
 
-            # Capa 3: Indicador Cambiario / Precio
             lbl_pre = tk.Label(
                 card_prod, text=f"${pre:.2f}", font=("Segoe UI", 15, "bold"), 
                 fg="#27ae60", bg="white"
             )
             lbl_pre.pack(expand=True, pady=5)
 
-            # Capa 4: Píldora de Inventario inferior
             lbl_stock = tk.Label(
                 card_prod, text=estado_txt, font=("Segoe UI", 8, "bold"), 
                 bg=bg_badge, fg=fg_badge, padx=8, pady=4
             )
             lbl_stock.pack(fill="x", side="bottom")
 
-            # --- ARQUITECTURA DE EVENTOS INTEGRAL (SOLUCIÓN AL CLOSURE BUG) ---
+                        # --- ARQUITECTURA DE EVENTOS CORREGIDA EN BLOQUE SEGURO ---
             widgets_tarjeta = [card_prod, lbl_nom, lbl_comp, lbl_pre, lbl_stock]
             
-            # Congelamos el contexto de variables pasando copias locales por defecto en los lambdas
-            cmd_venta_directa = lambda e, c=cod, n=nom, m=mod, ma=mar, p=pre, s=cant: \
-                                self.agregar_al_carrito(c, n, m, ma, p, s)
+            cmd_venta_directa = lambda e, c=cod, n=nom, m=mod, ma=mar, p=pre, s=cant, cos=p_costo: \
+                                self.agregar_al_carrito_optimizado(c, n, m, ma, p, s, cos)
 
-            # DETONADOR 2: Clic Derecho (Auditoría e Inspección de Costos)
             cmd_inspeccion = lambda e, c=cod, n=nom, m=mod, ma=mar, p=pre, s=cant: \
                              self.mostrar_inspeccion_producto(c, n, m, ma, p, s)
 
             for w in widgets_tarjeta:
                 w.config(cursor="hand2")
+                w.bind("<Button-1>", cmd_venta_directa)
+                w.bind("<Button-3>", cmd_inspeccion)
                 
-                # Asignación quirúrgica de los dos canales de ratón
-                w.bind("<Button-1>", cmd_venta_directa) # Clic Izquierdo = Carrito automático
-                w.bind("<Button-3>", cmd_inspeccion)    # Clic Derecho = Ficha de costo oculta
-                
-                # Efecto Hover por Tarjeta Independiente
+                # 🎨 EFECTO HOVER MAESTRO: Todo el bloque se unifica al gris claro corporativo sin parches
                 w.bind("<Enter>", lambda e, cp=card_prod, ln=lbl_nom, lc=lbl_comp, lp=lbl_pre: [
                     cp.config(bg="#f1f2f6", highlightbackground="#3498db"),
-                    ln.config(bg="#f1f2f6"), lc.config(bg="#f1f2f6"), lp.config(bg="#f1f2f6")
-                    
-                    
+                    ln.config(bg="#f1f2f6"), 
+                    lc.config(bg="#f1f2f6"), 
+                    lp.config(bg="#f1f2f6")
                 ])
+                
+                # Retorno al estado original de fondo blanco puro
                 w.bind("<Leave>", lambda e, cp=card_prod, ln=lbl_nom, lc=lbl_comp, lp=lbl_pre: [
                     cp.config(bg="white", highlightbackground="#dcdde1"),
-                    ln.config(bg="white"), lc.config(bg="white"), lp.config(bg="white")
+                    ln.config(bg="white"), 
+                    lc.config(bg="white"), 
+                    lp.config(bg="white")
                 ])
 
-                
-                
+        
+
+
         try:
-            # Buscamos de forma segura el Canvas ancestro para reajustar su caja deslizable
+            # 1. Buscamos el Canvas principal de la pantalla del POS
             canvas_pos = self.grid_productos.master
+            
+            # 2. Obligamos a Tkinter a recalcular el tamaño real de todas las tarjetas inyectadas
+            self.grid_productos.update_idletasks()
+            
+            # 3. Reajustamos el área deslizable para que cubra exactamente el mosaico actual
             canvas_pos.configure(scrollregion=canvas_pos.bbox("all"), bg="#f5f7f8")
-        except:
-            pass
+            
+            # 4. LA CLAVE: Forzamos al Canvas a subir a la posición superior absoluta (Cero píxeles)
+            # Esto elimina de raíz el "salto" o desplazamiento que escondía las tarjetas arriba
+            canvas_pos.yview_moveto(0.0)
+
+        
+            
+        except Exception as e:
+            print(f"DEBUG GEOMETRÍA: Error al sincronizar el scroll del POS: {e}")
+
+        
+
+
+
+    def agregar_al_carrito_optimizado(self, codigo, nombre, modelo, marca, precio, stock_actual, precio_costo):
+        """ Recibe el costo pre-cargado desde el buscador, reduciendo el delay contable a cero. """
+        for item in self.carrito:
+            if item['codigo'] == codigo:
+                messagebox.showinfo("Aviso", "El producto ya está en el carrito. Haz doble clic en la lista para cambiar la cantidad.")
+                return
+
+        if int(stock_actual) < 1:
+            messagebox.showerror("Stock Insuficiente", "No puedes vender más de lo que hay en inventario.")
+            return
+
+        self.carrito.append({
+            'codigo': codigo,
+            'nombre': nombre,
+            'marca': marca,   
+            'modelo': modelo, 
+            'precio': float(precio),
+            'costo': float(precio_costo), # Carga en RAM ultra fluida
+            'cantidad': 1,
+            'stock_max': int(stock_actual)
+        })
+        self.actualizar_tabla_pos()
+
 
 
 
@@ -2435,43 +2448,35 @@ class ERPRepuestosApp:
         self.cargar_tabla_gestion()
 
     def cargar_tabla_gestion(self):
-        # 1. Bloqueamos el refresco visual para ganar velocidad
+        """Refresco optimizado para la tabla de administración. Evita el lag visual en disco."""
         self.tree.configure(displaycolumns=()) 
-        
-        # 2. Limpieza rápida y preparación de variables
         self.tree.delete(*self.tree.get_children())
-        filtro = self.entry_buscar.get().strip() if hasattr(self, "entry_buscar") else ""
         
-        # Parámetros de paginación
+        filtro = self.entry_buscar.get().strip() if hasattr(self, "entry_buscar") else ""
         offset = self.pagina_actual * self.items_por_pagina
 
-        # 3. Consulta optimizada con paso de parámetros corregido
         if filtro:
             like = f"%{filtro}%"
             query = """SELECT codigo, nombre, modelo, marca, precio_costo, precio_venta, cantidad, fecha 
                        FROM repuestos 
                        WHERE codigo LIKE ? OR nombre LIKE ? OR modelo LIKE ? OR marca LIKE ? 
                        ORDER BY nombre LIMIT ? OFFSET ?"""
-            # Pasamos los 4 de búsqueda + los 2 de paginación (Total 6)
             datos = consulta(query, (like, like, like, like, self.items_por_pagina, offset))
         else:
-            query = """SELECT codigo, nombre, modelo, marca, precio_costo, precio_venta, cantidad, fecha 
+            query = """SELECT codigo, nombre, modelo, precio_venta, cantidad, marca, precio_costo, fecha 
                        FROM repuestos 
                        ORDER BY nombre LIMIT ? OFFSET ?"""
-            # Pasamos los 2 de paginación
             datos = consulta(query, (self.items_por_pagina, offset))
 
-        # 4. Inserción masiva
         for d in datos:
-            # d[6] es la cantidad/stock
+            # d[6] mapea de forma directa la cantidad de existencias físicas en lote
             tag = "alerta" if int(d[6]) <= 5 else ""
             self.tree.insert("", "end", values=d, tags=(tag,))
 
-        # 5. Restauramos las columnas y actualizamos indicador visual
         self.tree.configure(displaycolumns="#all")
-        
         if hasattr(self, 'lbl_paginacion'):
             self.lbl_paginacion.config(text=f"Página {self.pagina_actual + 1}")
+
 
 
         
@@ -3122,7 +3127,9 @@ class ERPRepuestosApp:
                 # Facturas ordinarias regulares de venta directa
                 ganancia_v = round(monto_v - costo_registrado, 2)
 
-            # --- MOTOR DE DESGLOSE DE CAJAS MIXTAS FRACCIONADAS ---
+            # =====================================================================
+            # ⚙️ MOTOR DE DESGLOSE DE CAJAS MIXTAS FRACCIONADAS (CONGELACIÓN DE REVERSIONES)
+            # =====================================================================
             if "MIXTO FRACCIONADO" in detalle_v or "CANJE PARCIAL" in detalle_v or "[MÉTODO: MIXTO" in detalle_v or "VALE COMPENSADO:" in detalle_v:
                 try:
                     usd_str = detalle_v.split("EFECTIVO USD: $")[1].split(" |")[0].strip()
@@ -3148,9 +3155,15 @@ class ERPRepuestosApp:
                         tasa_transaccion = float(tasa_str)
                     except:
                         tasa_transaccion = self.tasa_actual
-                    caja_digital_bs += (monto_v * tasa_transaccion)
+                    
+                    # Evitamos sumar montos de canje negativos a la caja de Bolívares
+                    if "[ANULACIÓN DE UTILIDAD]" in detalle_v:
+                        caja_digital_bs += 0.00
+                    else:
+                        caja_digital_bs += (monto_v * tasa_transaccion)
                     tipo_pago_tag = "Bs."
                 else:
+                    # Si es una anulación, no restamos capital de la gaveta de efectivo
                     if "[ANULACIÓN DE UTILIDAD]" in detalle_v or "[EGRESO DEVOLUCIÓN EFECTIVO]" in detalle_v:
                         caja_efectivo_usd += 0.00 
                     else:
@@ -3165,7 +3178,16 @@ class ERPRepuestosApp:
                 num_factura_con_moneda = f"{num_factura} ({tipo_pago_tag})"
                 tags_estructurados = (detalle_v,)
 
-            total_general_usd += monto_v
+            # =====================================================================
+            # 📈 ACUMULADORES CORPORATIVOS (CÁLCULO BRUTO SEGURO)
+            # =====================================================================
+            if "[ANULACIÓN DE UTILIDAD]" in detalle_v:
+                # El capital no se fue del local, se congela la suma para que no reste la caja
+                total_general_usd += 0.00 
+            else:
+                total_general_usd += monto_v
+                
+            # La ganancia neta sí absorbe el ajuste comercial de forma pulcra
             ganancia_neta_global += ganancia_v
 
             self.tree_finanzas.insert("", "end", values=(
@@ -3176,7 +3198,9 @@ class ERPRepuestosApp:
                 f"${ganancia_v:.2f}"
             ), tags=tags_estructurados)
 
-        # Refrescar la barra de KPIs inferiores con formato de millares
+        # =====================================================================
+        # 🏁 REFRESCO DE FILTRADO VISUAL EN KPIS INFERIORES
+        # =====================================================================
         if hasattr(self, 'lbl_ingreso_bruto'): self.lbl_ingreso_bruto.config(text=f"Total General: ${total_general_usd:,.2f}")
         if hasattr(self, 'lbl_caja_usd'): self.lbl_caja_usd.config(text=f"Caja USD: ${max(0.0, caja_efectivo_usd):,.2f}")
         if hasattr(self, 'lbl_caja_bs'): self.lbl_caja_bs.config(text=f"Caja Bs.: Bs. {caja_digital_bs:,.2f}")
@@ -4701,7 +4725,8 @@ class ERPRepuestosApp:
         widgets_volver = [btn_volver_frame, head_volver, lbl_ico_back, body_volver, lbl_txt_back]
         for w in widgets_volver:
             w.config(cursor="hand2")
-            w.bind("<Button-1>", lambda e: self.filtrar_productos_pos())
+            w.bind("<Button-1>", lambda e: [self.ent_buscar_pos.delete(0, "end"), self.filtrar_productos_pos()])
+
             w.bind("<Enter>", lambda e, cp=btn_volver_frame, hv=head_volver: [
                 cp.config(highlightbackground="#95a5a6", bg="#f9f9f9"),
                 hv.config(bg="#95a5a6")
@@ -4974,8 +4999,11 @@ class ERPRepuestosApp:
         
         return min(cantidades_maximas) if cantidades_maximas else 0
     
+        # =====================================================================
+    # 🔄 MÓDULO QUIRÚRGICO DE CAMBIOS Y GESTIÓN MODULAR DE CANJES MULTI-ÍTEM
+    # =====================================================================
     def procesar_nota_credito_cambio(self):
-        """Paso 1 de la Logística: Extrae automáticamente la cedula y nombre de la factura e inicializa el canje."""
+        """Extrae de forma automatizada los metadatos de identidad de la factura e inicia el canje selectivo."""
         sel = self.tree_finanzas.selection()
         if not sel:
             messagebox.showwarning("Atención", "Seleccione la factura de la cual se cambiarán los productos.")
@@ -4992,22 +5020,18 @@ class ERPRepuestosApp:
 
         if "CEDULA: " in detalle_full:
             try:
-                # Cortamos para aislar la cédula guardada en el sello de la venta
-                # Ejemplo: "... | CÉDULA: 20123456]" -> extrae "20123456"
                 cedula_raw = detalle_full.split("CEDULA: ")[1].split("]")[0].strip()
                 if cedula_raw and cedula_raw != "GENERICO":
                     cedula_detectada = cedula_raw
-                    # Buscamos quirúrgicamente el nombre real en la DB central de clientes
                     res_cliente = consulta("SELECT nombre FROM clientes WHERE cedula = ?", (cedula_detectada,), db_path=DB_CLIENTES)
                     if res_cliente and len(res_cliente) > 0:
                         nombre_detectado = res_cliente[0][0]
-            except Exception as err_identidad:
-                print(f"DEBUG IDENTIDAD: Fallo al procesar metadatos del cliente: {err_identidad}")
+            except Exception as err_id:
+                print(f"DEBUG IDENTIDAD: Fallo procesando metadatos: {err_id}")
 
-        # Preparación de la glosa descriptiva para la cabecera
         cliente_label_final = f"{cedula_detectada} - {nombre_detectado}"
 
-        # Clasificación de artículos reales vendidos
+        # Clasificación analítica de repuestos reales vendidos
         lista_cruda = detalle_full.split(", ")
         items_factura_reales = []
 
@@ -5021,13 +5045,9 @@ class ERPRepuestosApp:
                         cant_facturada = int(parte_cant)
                         
                         items_factura_reales.append({
-                            'cod': codigo,
-                            'nom': desc_completa,
-                            'cant_max': cant_facturada,
-                            'texto_original': item_str
+                            'cod': codigo, 'nom': desc_completa, 'cant_max': cant_facturada, 'texto_original': item_str
                         })
-                    except:
-                        continue
+                    except: continue
 
         if not items_factura_reales:
             messagebox.showwarning("Atención", "Esta factura no contiene repuestos físicos legibles para procesar un canje.")
@@ -5042,7 +5062,7 @@ class ERPRepuestosApp:
         win.grab_set()
         win.resizable(False, False)
 
-        # Centrado asíncrono corporativo
+        # Centrado asíncrono corporativo anti-parpadeo
         win.withdraw()
         def _centrar_gestor_canjes_real():
             win.update_idletasks()
@@ -5059,11 +5079,10 @@ class ERPRepuestosApp:
         id_frame.pack(fill="x", padx=40, pady=(0, 10))
         tk.Label(id_frame, text="Cliente Beneficiario del Vale:", font=("Segoe UI", 9, "bold"), fg="#bdc3c7", bg="#2c3e50").pack(side="left")
         
-        # El entry se llena solo y cambia a color de lectura de sistema (#ebd4d4)
         ent_cliente = tk.Entry(id_frame, font=("Segoe UI", 10, "bold"), justify="center", width=32, bg="#ebd4d4", fg="#2c3e50")
         ent_cliente.pack(side="left", padx=10)
         ent_cliente.insert(0, cliente_label_final)
-        ent_cliente.config(state="disabled") # CORRECCIÓN: Bloqueado contra modificaciones manuales
+        ent_cliente.config(state="disabled") # Bloqueado contra modificaciones manuales por seguridad
 
         # Sistema de rejilla deslizable (Canvas) para componentes checks
         scroll_frame = tk.Frame(win, bg="#2c3e50")
@@ -5104,12 +5123,10 @@ class ERPRepuestosApp:
             tk.Label(row_frame, text=f"Max: {item['cant_max']}", font=("Segoe UI", 8, "italic"), fg="#2ecc71", bg="#34495e").pack(side="left", padx=5)
 
             referencias_ui_canje.append({
-                'item_data': item,
-                'check_var': var_check,
-                'entry_widget': ent_cant_dev
+                'item_data': item, 'check_var': var_check, 'entry_widget': ent_cant_dev
             })
 
-        # Motor de procesamiento consolidado
+        # Motor de procesamiento consolidado masivo
         def ejecutar_consolidacion_canje_masivo():
             monto_acumulado_vale = 0.0
             costo_acumulado_reingreso = 0.0
@@ -5140,6 +5157,7 @@ class ERPRepuestosApp:
                     monto_acumulado_vale += (precio_u * cantidad_devolver)
                     costo_acumulado_reingreso += (costo_u * cantidad_devolver)
 
+                    # Reposición física directa al inventario
                     consulta("UPDATE repuestos SET cantidad = cantidad + ? WHERE codigo = ?", (cantidad_devolver, datos_pieza['cod']), fetch=False, db_path=DB_NAME)
                     glosas_de_devolucion_log.append(f"[{datos_pieza['cod']}] {datos_pieza['nom']} x{cantidad_devolver}")
 
@@ -5150,34 +5168,24 @@ class ERPRepuestosApp:
             try:
                 num_nc = f"NC-{random.randint(1000, 9999)}"
                 
-                # 1. Guardamos la Nota de Crédito con estado VIGENTE de forma regular
+                # 1. Guardamos la Nota de Crédito con estado VIGENTE de forma regular en la DB
                 consulta(
                     """INSERT INTO notas_credito 
                        (codigo_nota, factura_origen_id, cliente, monto_a_favor, costo_devuelto, estado) 
                        VALUES (?, ?, ?, ?, ?, 'VIGENTE')""",
-                    (num_nc, id_venta, nombre_detectado, round(monto_acumulado_vale, 2), round(costo_acumulado_reingreso, 2),),
+                    (num_nc, id_venta, nombre_detectado, round(monto_acumulado_vale, 2), round(costo_acumulado_reingreso, 2)),
                     fetch=False, db_path=DB_VENTAS
                 )
 
-                # 2. --- EL ASIENTO DE REVERSIÓN CONTABLE EXCLUSIVO (EL DESCUENTO REAL VISTA) ---
-                # Recuperamos los datos de la factura vieja original que estamos anulando hoy
-                res_factura_vieja = consulta("SELECT total, costo_total FROM ventas_log WHERE id = ?", (id_venta,), db_path=DB_VENTAS)
-                if res_factura_vieja and len(res_factura_vieja) > 0:
-                    total_viejo, costo_viejo = res_factura_vieja[0]
-                    ganancia_vieja_anular = round(float(total_viejo) - float(costo_viejo), 2)
-                else:
-                    ganancia_vieja_anular = 0.00
-
-                # Inyectamos una fila de contra-asiento en el log de finanzas el día de hoy.
-                # Al setear Total = 0.00 y Costo = Ganancia Vieja, la utilidad de esta fila dará
-                # exactamente MENOS la ganancia de la factura vieja (-$5.61), eliminándola del sistema.
-                fecha_reversion = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                glosa_reversion = f"[ANULACIÓN DE UTILIDAD] - Extinción de Margen por Devolución de Factura FACT-{str(id_venta).zfill(5)}"
+                # 2. Inyección de la fila de contra-asiento en el log de finanzas el día de hoy
+                # Al setear Total = -monto y Costo = -costo, balanceamos de forma exacta tu reporte financiero en vivo
+                fecha_asiento = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                detalle_anulacion = f"[ANULACIÓN DE UTILIDAD] ▸ Ajuste Factura Origen ID: FACT-{str(id_venta).zfill(5)} | Devolución: {', '.join(glosas_de_devolucion_log)}"
                 
-                consulta("INSERT INTO ventas_log (fecha_hora, productos, total, costo_total) VALUES (?, ?, 0.0, ?)",
-                         (fecha_reversion, glosa_reversion, ganancia_vieja_anular), fetch=False, db_path=DB_VENTAS)
+                consulta("INSERT INTO ventas_log (fecha_hora, productos, total, costo_total) VALUES (?, ?, ?, ?)",
+                         (fecha_asiento, detalle_anulacion, -round(monto_acumulado_vale, 2), -round(costo_acumulado_reingreso, 2)), fetch=False, db_path=DB_VENTAS)
 
-                # --- COMPROBANTE TICKET EMITIDO ---
+                # 3. Comprobante Ticket Impreso Digital Visual
                 win_nc_ticket = tk.Toplevel(self.root)
                 win_nc_ticket.title("Comprobante de Canje")
                 win_nc_ticket.geometry("450x460")
@@ -5218,6 +5226,8 @@ class ERPRepuestosApp:
                           font=("Segoe UI", 10, "bold"), relief="flat", height=2, cursor="hand2", command=win_nc_ticket.destroy).pack(fill="x", padx=35, pady=(5, 15))
 
                 win.destroy()
+                
+                # Refrescos de interfaces coordinados en cascada
                 self.actualizar_tabla_finanzas()
                 self.cargar_tabla_gestion()
                 self.actualizar_estadisticas()
@@ -5228,8 +5238,7 @@ class ERPRepuestosApp:
         # --- BOTONERA PRINCIPAL EN REJILLA DE REFUERZO ---
         btns_frame = tk.Frame(win, bg="#2c3e50")
         btns_frame.pack(side="bottom", fill="x", padx=40, pady=20)
-        btns_frame.columnconfigure(0, weight=1)
-        btns_frame.columnconfigure(1, weight=1)
+        btns_frame.columnconfigure(0, weight=1); btns_frame.columnconfigure(1, weight=1)
 
         estilo_btn = {"relief": "flat", "height": 2, "font": ("Segoe UI", 9, "bold"), "cursor": "hand2"}
         tk.Button(btns_frame, text="✅ PROCESAR CANJES", bg="#27ae60", fg="white", command=ejecutar_consolidacion_canje_masivo, **estilo_btn).grid(row=0, column=0, padx=(0,5), sticky="nsew")
@@ -5468,29 +5477,43 @@ class ERPRepuestosApp:
 
 
     def verificar_o_registrar_cliente_pos(self):
-        """Verifica la existencia del cliente. Si es nuevo, abre la pasarela de registro reducida."""
+        """
+        Consulta de alta fidelidad. Busca al deudor y actualiza la etiqueta 
+        del POS en vivo. Si no existe, abre el módulo de registro.
+        """
+        # Limpiamos la entrada eliminando espacios, puntos o guiones de la cédula
         cedula = self.ent_cedula_pos.get().strip().replace(".", "").replace("-", "").upper()
-        if not cedula: return
+        if not cedula: 
+            messagebox.showwarning("Atención", "Por favor, ingrese un número de cédula válido para verificar.", parent=self.root)
+            return
 
-        # Consultar la DB central de clientes
+        # Consultar de forma indexada la base de datos relacional de clientes
         res = consulta("SELECT nombre FROM clientes WHERE cedula = ?", (cedula,), db_path=DB_CLIENTES)
         
-        if res:
-            # Cliente existente: Seteamos su nombre en la barra del POS
-            nombre_cliente = res[0][0]
-            self.lbl_info_cliente_pos.config(text=f"{nombre_cliente}", fg="#2ecc71")
-            messagebox.showinfo("Cliente Encontrado", f"🏍️ ¡Bienvenido de nuevo, {nombre_cliente}!\nSu historial ha sido vinculado a esta orden.")
+        if res and len(res) > 0:
+            # --- CLIENTE DETECTADO EN EL SISTEMA ---
+            nombre_cliente = res[0][0].upper()
+            
+            # Actualizamos el Label del POS en verde esmeralda brillante con su identidad
+            self.lbl_info_cliente_pos.config(text=f"✅ CLIENTE: {nombre_cliente}", fg="#2ecc71")
+            
+            # Pequeña notificación emergente de éxito sin bloquear el flujo
+            messagebox.showinfo("Cliente Vinculado", f"🏍️ ¡Bienvenido de nuevo, {nombre_cliente}!\nSu cuenta e historial han sido enlazados a esta venta.")
         else:
-            # Cliente nuevo: Abrir subventana modal premium compacta
+            # --- CLIENTE NUEVO (PASARELA DE ALTA PREMIUM) ---
+            # Reseteamos visualmente el Label informando la anomalía de búsqueda
+            self.lbl_info_cliente_pos.config(text="❌ CLIENTE NO REGISTRADO", fg="#e74c3c")
+            
+            # Lanzamos tu ventana modal compacta de registro de la Parte 14
             win_reg_c = tk.Toplevel(self.root)
             win_reg_c.title("Alta de Nuevo Cliente")
-            win_reg_c.geometry("400x280") # Altura reducida para perfecta simetría
+            win_reg_c.geometry("400x280") 
             win_reg_c.configure(bg="#2c3e50")
             win_reg_c.transient(self.root)
             win_reg_c.grab_set()
             win_reg_c.resizable(False, False)
 
-            # Centrado absoluto real anti-parpadeo
+            # Centrado geométrico anti-parpadeo
             win_reg_c.withdraw()
             win_reg_c.after(10, lambda: [
                 win_reg_c.update_idletasks(),
@@ -5506,45 +5529,42 @@ class ERPRepuestosApp:
             def crear_campo_c(label, default_val=""):
                 f = tk.Frame(form_frame, bg="#2c3e50", pady=8)
                 f.pack(fill="x")
-                lbl = tk.Label(
-                    f, text=label, font=("Segoe UI", 10, "bold"), 
-                    fg="#bdc3c7", bg="#2c3e50", 
-                    width=18, anchor="e"
-                )
-                lbl.pack(side="left", padx=(0, 15)) # Añade un colchón de 15 píxeles antes de la caja blanca
+                lbl = tk.Label(f, text=label, font=("Segoe UI", 10, "bold"), fg="#bdc3c7", bg="#2c3e50", width=18, anchor="e")
+                lbl.pack(side="left", padx=(0, 15))
 
                 ent = tk.Entry(f, font=("Segoe UI", 11), bg="white", fg="#2c3e50", relief="flat")
                 ent.pack(side="left", fill="x", expand=True)
-                
-                if default_val: 
-                    ent.insert(0, default_val)
+                if default_val: ent.insert(0, default_val)
                 return ent
 
-            ent_c_ced = crear_campo_c("Cedula / ID:", cedula)
-            ent_c_nom = crear_campo_c("Nombre Completo  :",)
-            ent_c_nom.focus()
+            ent_c_ced = crear_campo_c("Cédula / ID:", cedula)
+            ent_c_nom = crear_campo_c("Nombre Completo:", "")
+            ent_c_nom.focus_set()
 
             def guardar_nuevo_cliente_db():
                 c_ced = ent_c_ced.get().strip().upper()
                 c_nom = ent_c_nom.get().strip().upper()
                 
                 if not c_ced or not c_nom:
-                    messagebox.showwarning("Atención", "Cedula y Nombre son campos obligatorios.", parent=win_reg_c)
+                    messagebox.showwarning("Atención", "Cédula y Nombre son campos obligatorios.", parent=win_reg_c)
                     return
                 
                 try:
                     fecha_hoy = datetime.now().strftime("%Y-%m-%d")
-                    # Inserción limpia con las 3 columnas solicitadas
                     consulta("INSERT INTO clientes (cedula, nombre, fecha_registro) VALUES (?, ?, ?)",
                              (c_ced, c_nom, fecha_hoy), fetch=False, db_path=DB_CLIENTES)
                     
-                    self.lbl_info_cliente_pos.config(text=f"{c_nom}", fg="#2ecc71")
+                    # Seteamos el label del POS inmediatamente con el nombre recién creado
+                    self.lbl_info_cliente_pos.config(text=f"✅ CLIENTE: {c_nom}", fg="#2ecc71")
                     messagebox.showinfo("Éxito", f"Cliente '{c_nom}' registrado correctamente en el ERP.", parent=win_reg_c)
                     win_reg_c.destroy()
+                    
+                    # Sincronizamos la grilla de control de deudores si estuviera abierta
+                    if "clientes" in self.frames:
+                        self.cargar_tabla_clientes()
                 except sqlite3.IntegrityError:
-                    messagebox.showerror("Error", "Esta cedula ya se encuentra registrada.", parent=win_reg_c)
+                    messagebox.showerror("Error", "Esta cédula ya se encuentra registrada en el sistema.", parent=win_reg_c)
 
-            # Botonera simétrica de bloque ejecutivo
             btns_frame = tk.Frame(win_reg_c, bg="#2c3e50")
             btns_frame.pack(side="bottom", fill="x", padx=40, pady=20)
             btns_frame.columnconfigure(0, weight=1); btns_frame.columnconfigure(1, weight=1)
@@ -5552,6 +5572,9 @@ class ERPRepuestosApp:
 
             tk.Button(btns_frame, text="GUARDAR", bg="#27ae60", fg="white", command=guardar_nuevo_cliente_db, **estilo_btn).grid(row=0, column=0, padx=(0,4), sticky="nsew")
             tk.Button(btns_frame, text="CANCELAR", bg="#c0392b", fg="white", command=win_reg_c.destroy, **estilo_btn).grid(row=0, column=1, padx=(4,0), sticky="nsew")
+            
+            ent_c_nom.bind("<Return>", lambda e: guardar_nuevo_cliente_db())
+
 
 
     def crear_pantalla_clientes(self):
@@ -5816,6 +5839,25 @@ class ERPRepuestosApp:
         self.cargar_tabla_clientes()
 
 
+    def disparar_buscador_con_debounce(self, event=None):
+        """
+        Gatillo de alta velocidad. Cancela la búsqueda anterior si el usuario 
+        sigue escribiendo y agenda una nueva para dentro de 250 milisegundos.
+        """
+        # 1. Si ya había una búsqueda programada en cola, la cancelamos de inmediato
+        if hasattr(self, '_debounce_buscar_id') and self._debounce_buscar_id is not None:
+            self.root.after_cancel(self._debounce_buscar_id)
+            
+        # 2. Agendamos una nueva búsqueda limpia para dentro de 250ms
+        self._debounce_buscar_id = self.root.after(250, self._ejecutar_busqueda_pos_segura)
+
+    def _ejecutar_busqueda_pos_segura(self):
+        """Elimina el rastro del timer de RAM y ejecuta el filtro optimizado."""
+        self._debounce_buscar_id = None
+        self.filtrar_productos_pos()
+
+
+
 
 
 
@@ -5861,7 +5903,7 @@ class ERPRepuestosApp:
         conn.close()
         print("--- CIRUGÍA EXITOSA: 500 PRODUCTOS INYECTADOS ---")
         
-    pass # Llamada a la función para llenar la base de datos con 500 productos de prueba
+    pass# Llamada a la función para llenar la base de datos con 500 productos de prueba
         
         
 
